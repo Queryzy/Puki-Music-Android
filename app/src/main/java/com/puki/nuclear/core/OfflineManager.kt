@@ -110,50 +110,16 @@ object OfflineManager {
             // Check if partial download already exists for resuming
             val existingBytes = if (partFile.exists() && partFile.length() > 0) partFile.length() else 0L
 
-            var downloadSuccess = false
-
-            // High-speed parallel chunk download (4 concurrent connections, 512 KB chunks)
-            // Bypasses YouTube CDN TCP pacing to achieve full bandwidth speed
-            if (existingBytes == 0L) {
-                try {
-                    val probeReq = Request.Builder()
-                        .url(streamUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                        .header("Range", "bytes=0-0")
-                        .build()
-                    val probeResp = httpClient.newCall(probeReq).execute()
-                    probeResp.use { pResp ->
-                        if (pResp.code == 206) {
-                            val cr = pResp.header("Content-Range")
-                            val totalBytes = cr?.substringAfter("/")?.trim()?.toLongOrNull() ?: -1L
-                            if (totalBytes > 256_000L) {
-                                downloadParallelChunks(
-                                    streamUrl = streamUrl,
-                                    partFile = partFile,
-                                    targetFile = targetFile,
-                                    totalBytes = totalBytes,
-                                    onProgress = onProgress
-                                )
-                                downloadSuccess = true
-                            }
-                        }
-                    }
-                } catch (_: Exception) {
-                    downloadSuccess = false
-                }
-            }
-
-            if (!downloadSuccess) {
-                // Sequential fallback with HTTP 206 Range resume support
-                downloadSequential(
-                    streamUrl = streamUrl,
-                    track = track,
-                    partFile = partFile,
-                    targetFile = targetFile,
-                    existingBytes = existingBytes,
-                    onProgress = onProgress
-                )
-            }
+            // Clean sequential download with HTTP 206 Range resume support
+            // Writes continuously into FileOutputStream to ensure bit-perfect audio stream without zero-gaps
+            downloadSequential(
+                streamUrl = streamUrl,
+                track = track,
+                partFile = partFile,
+                targetFile = targetFile,
+                existingBytes = existingBytes,
+                onProgress = onProgress
+            )
 
             onProgress(100)
 

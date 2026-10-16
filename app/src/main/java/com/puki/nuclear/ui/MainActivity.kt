@@ -653,7 +653,14 @@ fun NuclearMainScreen(
                         onClick = { showExpandedPlayer = true },
                         onPlayPauseToggle = {
                             mediaController?.let {
-                                if (it.isPlaying) it.pause() else it.play()
+                                if (it.isPlaying) {
+                                    it.pause()
+                                } else {
+                                    if (it.playbackState == Player.STATE_IDLE) {
+                                        it.prepare()
+                                    }
+                                    it.play()
+                                }
                             }
                         },
                         onNextClick = { playNextTrack() }
@@ -2440,6 +2447,50 @@ fun SettingsTab(
             }
         }
 
+        // Catatan Rilis / Changelog
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant.copy(alpha = 0.7f)),
+                border = BorderStroke(1.dp, palette.border.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Notes, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "CATATAN RILIS (CHANGELOG)",
+                            color = palette.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "• Fix Player Stuck & Audio Freeze:\n" +
+                               "  - Eliminasi AudioTrack float buffer stall pada chipset Huawei / Android.\n" +
+                               "  - Penambahan dedicated CPU WakeLock saat audio memutar agar Doze / PowerGenie tidak membekukan playback saat layar terkunci.\n" +
+                               "  - Perbaikan downloader offline ke pure sequential streaming untuk mencegah audio korup / gap nol byte.\n" +
+                               "  - Tombol Play otomatis re-prepare player jika sempat idle.\n" +
+                               "• Fix Media Notification Shade & Lockscreen:\n" +
+                               "  - Sampul lagu (cover art) tampil penuh via direct bitmap bytes embedding.\n" +
+                               "  - Tombol Previous, Play/Pause, dan Next lengkap dan terhubung ke antrean lagu.\n" +
+                               "• Tab Antrean Putar (Queue Tracklist) di Expanded Player.\n" +
+                               "• Foto / Artwork Musisi Asli pada bar Artis Paling Sering Didengar.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
         // Storage Usage Card
         item {
             Text(
@@ -2939,7 +2990,7 @@ fun SettingsTab(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Puki Music v1.0.11",
+                        text = "Puki Music v$currentVersionName",
                         color = palette.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
