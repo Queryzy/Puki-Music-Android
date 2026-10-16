@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NuclearMobile"
+rootProject.name = "puki-music"
 include(":app")

@@ -28,7 +28,7 @@ art_rgba[:, :, 2] = RED[2]
 art_rgba[:, :, 3] = crop_a
 clean_mark = Image.fromarray(art_rgba, 'RGBA')
 
-res_dir = '/opt/data/projects/nuclear-android/app/src/main/res'
+res_dir = '/opt/data/projects/puki-music/app/src/main/res'
 
 densities = {
     'mipmap-mdpi': (48, 108),
@@ -125,6 +125,6 @@ logo.save(os.path.join(drawable_dir, 'ic_app_logo.png'))
 
 # Save a preview for the user
 sq_preview = make_legacy_square(512)
-sq_preview.save('/opt/data/projects/nuclear-android/preview_white_red_squircle.png')
+sq_preview.save('/opt/data/projects/puki-music/preview_white_red_squircle.png')
 
 print("All Android launcher icons regenerated with White background and Red Music mark!")
