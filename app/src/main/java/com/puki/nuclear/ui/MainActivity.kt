@@ -279,6 +279,10 @@ fun NuclearMainScreen(
     }
 
     fun downloadPlaylist(tracks: List<Track>, playlistName: String, playlistId: String = "") {
+        if (OfflineManager.activeBatch.value != null) {
+            Toast.makeText(context, "Sedang mengunduh antrean lagu sebelumnya, mohon tunggu...", Toast.LENGTH_SHORT).show()
+            return
+        }
         val toDownload = tracks.filterNot { OfflineManager.isTrackDownloaded(context, it.id) }
         if (toDownload.isEmpty()) {
             Toast.makeText(context, "Semua lagu di '$playlistName' sudah terunduh offline!", Toast.LENGTH_SHORT).show()
@@ -2163,11 +2167,17 @@ fun SettingsTab(
                         )
                     }
 
+                    val currentBatch = OfflineManager.activeBatch.value
+                    if (currentBatch != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        BatchDownloadBanner(batch = currentBatch, palette = palette)
+                    }
+
                     val undownloadedCount = favoritesList.count {
                         val norm = LocalMusicStore.normalizeId(it.id)
                         !offlineTrackIds.contains(norm) && !OfflineManager.isTrackDownloaded(context, it.id)
                     }
-                    if (undownloadedCount > 0) {
+                    if (undownloadedCount > 0 && currentBatch == null) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
                             onClick = onDownloadFavorites,

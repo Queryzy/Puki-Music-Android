@@ -9,6 +9,7 @@ import com.puki.nuclear.data.LocalMusicStore
 import com.puki.nuclear.model.NetworkDownloadPreference
 import com.puki.nuclear.model.Track
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -51,7 +52,8 @@ object OfflineManager {
     }
 
     private fun sanitizeFilename(id: String): String {
-        return id.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val norm = LocalMusicStore.normalizeId(id)
+        return norm.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
     }
 
     fun isTrackDownloaded(context: Context, trackId: String): Boolean {
@@ -90,30 +92,32 @@ object OfflineManager {
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("HTTP ${response.code}: gagal mengunduh stream")
-            }
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    throw IllegalStateException("HTTP ${resp.code}: gagal mengunduh stream")
+                }
 
-            val body = response.body ?: throw IllegalStateException("Empty response body")
-            val totalBytes = body.contentLength()
-            val estimatedBytes = if (totalBytes > 0) totalBytes else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
-            var downloadedBytes = 0L
+                val body = resp.body ?: throw IllegalStateException("Empty response body")
+                val totalBytes = body.contentLength()
+                val estimatedBytes = if (totalBytes > 0) totalBytes else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
+                var downloadedBytes = 0L
 
-            body.byteStream().use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    val buffer = ByteArray(16 * 1024)
-                    var read: Int
-                    var lastReported = 0
-                    while (input.read(buffer).also { read = it } != -1) {
-                        output.write(buffer, 0, read)
-                        downloadedBytes += read
-                        val progress = ((downloadedBytes * 100) / estimatedBytes).coerceIn(0L, 99L).toInt()
-                        if (progress != lastReported) {
-                            lastReported = progress
-                            onProgress(progress)
+                body.byteStream().use { input ->
+                    FileOutputStream(targetFile).use { output ->
+                        val buffer = ByteArray(16 * 1024)
+                        var read: Int
+                        var lastReported = 0
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            downloadedBytes += read
+                            val progress = ((downloadedBytes * 100) / estimatedBytes).coerceIn(0L, 99L).toInt()
+                            if (progress != lastReported) {
+                                lastReported = progress
+                                onProgress(progress)
+                            }
                         }
+                        output.flush()
                     }
-                    output.flush()
                 }
             }
 
@@ -126,13 +130,15 @@ object OfflineManager {
                     val thumbFile = File(storageDir, "$baseName.jpg")
                     val thumbReq = Request.Builder().url(track.thumbnailUrl).build()
                     val thumbRes = thumbHttpClient.newCall(thumbReq).execute()
-                    if (thumbRes.isSuccessful) {
-                        thumbRes.body?.byteStream()?.use { input ->
-                            FileOutputStream(thumbFile).use { output ->
-                                input.copyTo(output)
+                    thumbRes.use { tResp ->
+                        if (tResp.isSuccessful) {
+                            tResp.body?.byteStream()?.use { input ->
+                                FileOutputStream(thumbFile).use { output ->
+                                    input.copyTo(output)
+                                }
                             }
+                            localThumb = thumbFile.absolutePath
                         }
-                        localThumb = thumbFile.absolutePath
                     }
                 } catch (_: Exception) {}
             }
@@ -194,7 +200,7 @@ object OfflineManager {
                 )
 
                 activeDownloads[track.id] = 0
-                val res = try {
+                var res = try {
                     downloadTrack(context, track) { pct ->
                         activeDownloads[track.id] = pct
                         val overall = (((index * 100) + pct) / toDownload.size).coerceIn(0, 100)
@@ -203,17 +209,42 @@ object OfflineManager {
                             overallPercent = overall
                         )
                     }
-                } finally {
-                    activeDownloads.remove(track.id)
+                } catch (e: Exception) {
+                    Result.failure(e)
                 }
+
+                // If initial download fails, retry once with short delay (resilience against rate-limiting)
+                if (res.isFailure) {
+                    delay(1200L)
+                    res = try {
+                        downloadTrack(context, track) { pct ->
+                            activeDownloads[track.id] = pct
+                            val overall = (((index * 100) + pct) / toDownload.size).coerceIn(0, 100)
+                            activeBatch.value = activeBatch.value?.copy(
+                                currentTrackPercent = pct,
+                                overallPercent = overall
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Result.failure(e)
+                    }
+                }
+
+                activeDownloads.remove(track.id)
 
                 if (res.isSuccess) {
                     completed++
                     onTrackCompleted(track)
                 }
+
+                // Spacing interval between sequential YouTube CDN requests to avoid anti-bot throttle
+                if (index < toDownload.size - 1) {
+                    delay(800L)
+                }
             }
         } finally {
             activeBatch.value = null
+            activeDownloads.clear()
         }
         return completed
     }

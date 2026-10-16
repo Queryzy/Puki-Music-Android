@@ -112,7 +112,14 @@ object StreamResolver {
     suspend fun resolveAudioStreamDetailed(trackUrl: String): Result<StreamResolution> = withContext(Dispatchers.IO) {
         runCatching {
             val service = ServiceList.YouTube
-            val cleanUrl = if (trackUrl.startsWith("http")) trackUrl else "https://www.youtube.com/watch?v=$trackUrl"
+            val videoId = if (trackUrl.contains("v=")) {
+                trackUrl.substringAfter("v=").substringBefore("&")
+            } else if (trackUrl.contains("youtu.be/")) {
+                trackUrl.substringAfter("youtu.be/").substringBefore("?")
+            } else {
+                trackUrl.trim().removePrefix("/")
+            }
+            val cleanUrl = "https://www.youtube.com/watch?v=$videoId"
             val streamExtractor = service.getStreamExtractor(cleanUrl)
             streamExtractor.fetchPage()
 
