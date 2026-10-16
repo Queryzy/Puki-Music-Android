@@ -120,8 +120,8 @@ class PlaybackService : MediaSessionService() {
             .setRenderersFactory(renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttributes, true)
-            .setHandleAudioBecomingNoisy(true)
+            .setAudioAttributes(audioAttributes, false)
+            .setHandleAudioBecomingNoisy(false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 

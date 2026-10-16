@@ -2287,11 +2287,11 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.27: Fix Notif Click Routing (Set SessionActivity PendingIntent):\n" +
-                               "  - Mengunci PendingIntent MediaSession langsung ke Puki Music MainActivity.\n" +
-                               "  - Menghilangkan bug saat klik notifikasi / lock screen player malah membuka YouTube Music bawaan HP.\n" +
-                               "• v1.0.26: Fix DNS Drop & Auto-Retry Resiliency (Bypass UnknownHostException).\n" +
-                               "• v1.0.25: Active Pre-Cache Engine Ala Spotify & YouTube Music (CacheWriter 1:1).",
+                        text = "• v1.0.28: Fix Audio Freeze & Multitasking Pause:\n" +
+                               "  - Eliminasi duplicate CacheWriter span collision: ExoPlayer mengontrol penuh caching disk 180 detik tanpa deadlock atau TCP drop dari YouTube.\n" +
+                               "  - Bypass AudioFocus interruption: notifikasi background (WA/Telegram) dan multitasking tidak akan me-pause musik secara sepihak.\n" +
+                               "• v1.0.27: Fix Notif Click Routing (`setSessionActivity` PendingIntent).\n" +
+                               "• v1.0.26: Fix DNS Drop & Auto-Retry Resiliency (Bypass UnknownHostException).",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
