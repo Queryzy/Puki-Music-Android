@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -46,6 +48,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.puki.nuclear.core.AppUpdateManager
 import com.puki.nuclear.core.OfflineManager
 import com.puki.nuclear.core.PlaybackService
+import com.puki.nuclear.core.PlaybackStateManager
 import com.puki.nuclear.core.ReleaseInfo
 import com.puki.nuclear.core.StreamResolver
 import com.puki.nuclear.data.LocalMusicStore
@@ -58,7 +61,13 @@ import com.puki.nuclear.model.RepeatMode
 import com.puki.nuclear.model.Track
 import com.puki.nuclear.ui.components.*
 import com.puki.nuclear.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.util.Log
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : ComponentActivity() {
 
@@ -259,6 +268,22 @@ fun NuclearMainScreen(
         }
     }
 
+    suspend fun fetchArtworkBytes(urlStr: String): ByteArray? = withContext(Dispatchers.IO) {
+        if (urlStr.isBlank()) return@withContext null
+        try {
+            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4000
+                readTimeout = 4000
+                instanceFollowRedirects = true
+            }
+            if (conn.responseCode == 200) {
+                conn.inputStream.use { it.readBytes() }
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // Playback logic: handles both local offline and remote CDN streaming
     fun playTrack(track: Track, newQueue: List<Track>? = null) {
         if (isResolvingStream) return
@@ -267,16 +292,35 @@ fun NuclearMainScreen(
         if (newQueue != null) {
             currentQueue = newQueue
         }
+        PlaybackStateManager.activeTrack = track
+        PlaybackStateManager.currentQueue = currentQueue
         store.recordPlay(track)
 
         val localFile = OfflineManager.getLocalAudioFile(context, track.id)
         if (localFile != null && localFile.exists()) {
             // 100% Offline Playback: Play instantly from local storage, zero latency
-            mediaController?.let { player ->
-                val mediaItem = MediaItem.fromUri(Uri.fromFile(localFile))
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.play()
+            scope.launch {
+                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
+                mediaController?.let { player ->
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artist)
+                        .setArtworkUri(if (track.thumbnailUrl.isNotBlank()) Uri.parse(track.thumbnailUrl) else null)
+                        .apply {
+                            if (artworkBytes != null && artworkBytes.isNotEmpty()) {
+                                setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                            }
+                        }
+                        .build()
+                    val mediaItem = MediaItem.Builder()
+                        .setMediaId(track.id)
+                        .setUri(Uri.fromFile(localFile))
+                        .setMediaMetadata(metadata)
+                        .build()
+                    player.setMediaItem(mediaItem)
+                    player.prepare()
+                    player.play()
+                }
             }
             return
         }
@@ -286,13 +330,32 @@ fun NuclearMainScreen(
         scope.launch {
             val streamRes = StreamResolver.resolveAudioStreamDetailed(track.id)
             streamRes.onSuccess { detailed ->
-                activeTrack = track.copy(
+                val updatedTrack = track.copy(
                     streamUrl = detailed.streamUrl,
                     viewCount = detailed.viewCount.takeIf { it > 0 } ?: track.viewCount,
                     likeCount = detailed.likeCount.takeIf { it > 0 } ?: track.likeCount
                 )
+                activeTrack = updatedTrack
+                PlaybackStateManager.activeTrack = updatedTrack
+
+                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
+
                 mediaController?.let { player ->
-                    val mediaItem = MediaItem.fromUri(detailed.streamUrl)
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(updatedTrack.title)
+                        .setArtist(updatedTrack.artist)
+                        .setArtworkUri(if (updatedTrack.thumbnailUrl.isNotBlank()) Uri.parse(updatedTrack.thumbnailUrl) else null)
+                        .apply {
+                            if (artworkBytes != null && artworkBytes.isNotEmpty()) {
+                                setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                            }
+                        }
+                        .build()
+                    val mediaItem = MediaItem.Builder()
+                        .setMediaId(updatedTrack.id)
+                        .setUri(detailed.streamUrl)
+                        .setMediaMetadata(metadata)
+                        .build()
                     player.setMediaItem(mediaItem)
                     player.prepare()
                     player.play()
@@ -332,8 +395,17 @@ fun NuclearMainScreen(
         }
         val currentIdx = currentQueue.indexOfFirst { it.id == activeTrack?.id }
         val prevIdx = if (currentIdx > 0) currentIdx - 1 else currentQueue.size - 1
-        playTrack(currentQueue[prevIdx], currentQueue)
-    }
+ playTrack(currentQueue[prevIdx], currentQueue)
+ }
+
+ LaunchedEffect(Unit) {
+ PlaybackStateManager.onPlayNext = { playNextTrack() }
+ PlaybackStateManager.onPlayPrevious = { playPreviousTrack() }
+ }
+ LaunchedEffect(activeTrack, currentQueue) {
+ PlaybackStateManager.activeTrack = activeTrack
+ PlaybackStateManager.currentQueue = currentQueue
+ }
 
     fun toggleOfflineDownload(track: Track) {
         val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
@@ -411,6 +483,45 @@ fun NuclearMainScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.w("PukiPlayer", "ExoPlayer error [${error.errorCodeName} / ${error.errorCode}]: ${error.message}")
+                val curTrack = activeTrackState ?: return
+                val currentPos = player.currentPosition.coerceAtLeast(0L)
+
+                // Auto-recover from transient drops, network timeouts, or CDN token expiration
+                scope.launch {
+                    delay(800)
+                    val localFile = OfflineManager.getLocalAudioFile(context, curTrack.id)
+                    if (localFile != null && localFile.exists()) {
+                        player.prepare()
+                        if (currentPos > 0) player.seekTo(currentPos)
+                        player.play()
+                    } else {
+                        val streamRes = StreamResolver.resolveAudioStreamDetailed(curTrack.id)
+                        streamRes.onSuccess { detailed ->
+                            val metadata = MediaMetadata.Builder()
+                                .setTitle(curTrack.title)
+                                .setArtist(curTrack.artist)
+                                .setArtworkUri(if (curTrack.thumbnailUrl.isNotBlank()) Uri.parse(curTrack.thumbnailUrl) else null)
+                                .build()
+                            val mediaItem = MediaItem.Builder()
+                                .setMediaId(curTrack.id)
+                                .setUri(detailed.streamUrl)
+                                .setMediaMetadata(metadata)
+                                .build()
+                            player.setMediaItem(mediaItem)
+                            player.prepare()
+                            if (currentPos > 0) player.seekTo(currentPos)
+                            player.play()
+                        }.onFailure {
+                            player.prepare()
+                            if (currentPos > 0) player.seekTo(currentPos)
+                            player.play()
+                        }
+                    }
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
