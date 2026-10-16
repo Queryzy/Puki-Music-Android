@@ -273,7 +273,7 @@ fun ArtistAlbumModal(
                                 val normId = LocalMusicStore.normalizeId(track.id)
                                 val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
                                 val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                                val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
+                                val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
                                 val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
 
                                 TrackItemCard(

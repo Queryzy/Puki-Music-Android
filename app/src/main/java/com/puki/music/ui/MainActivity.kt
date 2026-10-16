@@ -87,12 +87,8 @@ class MainActivity : ComponentActivity() {
 
         PlaybackStateManager.initContext(this)
 
-        try {
-            val serviceIntent = Intent(this, PlaybackService::class.java)
-            androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to start PlaybackService: ${e.message}")
-        }
+        // PlaybackService is bound and started asynchronously on-demand by MediaController via sessionToken.
+        // Never call startForegroundService here to avoid the 5-second OS ANR watchdog.
 
         val sessionToken = SessionToken(
             this,
@@ -1199,7 +1195,7 @@ fun DashboardTab(
                 val normId = LocalMusicStore.normalizeId(track.id)
                 val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
                 val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
+                val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
                 val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
 
                 TrackItemCard(
@@ -1395,7 +1391,7 @@ fun SearchTab(
                     val normId = LocalMusicStore.normalizeId(track.id)
                     val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
                     val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                    val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
+                    val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
                     val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
 
                     TrackItemCard(
@@ -1624,7 +1620,7 @@ fun LibraryTab(
                         val normId = LocalMusicStore.normalizeId(track.id)
                         val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
                         val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
+                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
 
                         TrackItemCard(
                             track = track,
@@ -1955,7 +1951,7 @@ fun PlaylistsTab(
                         val normId = LocalMusicStore.normalizeId(track.id)
                         val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
                         val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
+                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
                         val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
 
                         TrackItemCard(
@@ -2287,13 +2283,13 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.31 (Puki Music Official Release):\n" +
-                               "  - Rename package resmi menjadi `com.puki.music`.\n" +
-                               "  - Fix Lock Screen Dropout: Abaikan system sound transient loss (suara klik kunci layar HP tidak lagi me-pause musik).\n" +
-                               "  - Pinned Foreground Service: `onUpdateNotification` menahan Foreground Service aktif tanpa jeda saat ganti trek di layar mati/hitam.\n" +
-                               "  - Continuous 24h Partial WakeLock & WifiLock menjaga socket jaringan NewPipe tetap hidup saat transisi di Doze mode.\n" +
-                               "• v1.0.30: Production Keystore Signing & Standar 1:1 Spotify/YT Music.\n" +
-                               "• v1.0.29: Gapless Pre-Resolving Engine & Continuous Lock.",
+                        text = "• v1.0.32: Fix ANR Watchdog & Responsive Instant Playback:\n" +
+                               "  - Eliminasi ServiceTimeout ANR (hapus startForegroundService redundant dari MainActivity).\n" +
+                               "  - In-Memory Stream Cache: Stream URL YouTube di-cache di RAM 4 jam (resolving instan 0ms saat replay/mix).\n" +
+                               "  - Buffer Start 500ms: Lagu langsung berputar tanpa jeda 2-3 detik.\n" +
+                               "  - Zero Disk I/O di Main Thread: Hapus file checks dari render loop LazyColumn album.\n" +
+                               "• v1.0.31: Rename package com.puki.music & fix lock screen dropouts.\n" +
+                               "• v1.0.30: Production Keystore Signing (RSA 4096-bit).",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

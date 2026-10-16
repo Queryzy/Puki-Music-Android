@@ -109,18 +109,27 @@ object StreamResolver {
         val likeCount: Long
     )
 
+    private val streamCache = java.util.concurrent.ConcurrentHashMap<String, Pair<StreamResolution, Long>>()
+    private const val CACHE_TTL_MS = 4 * 60 * 60 * 1000L // 4 hours valid TTL for YouTube CDN audio URLs
+
     suspend fun resolveAudioStreamDetailed(trackUrl: String, maxRetries: Int = 3): Result<StreamResolution> = withContext(Dispatchers.IO) {
+        val videoId = if (trackUrl.contains("v=")) {
+            trackUrl.substringAfter("v=").substringBefore("&")
+        } else if (trackUrl.contains("youtu.be/")) {
+            trackUrl.substringAfter("youtu.be/").substringBefore("?")
+        } else {
+            trackUrl.trim().removePrefix("/")
+        }
+
+        val cached = streamCache[videoId]
+        if (cached != null && (System.currentTimeMillis() - cached.second) < CACHE_TTL_MS) {
+            return@withContext Result.success(cached.first)
+        }
+
         var lastError: Throwable? = null
         for (attempt in 1..maxRetries) {
             val result = runCatching {
                 val service = ServiceList.YouTube
-                val videoId = if (trackUrl.contains("v=")) {
-                    trackUrl.substringAfter("v=").substringBefore("&")
-                } else if (trackUrl.contains("youtu.be/")) {
-                    trackUrl.substringAfter("youtu.be/").substringBefore("?")
-                } else {
-                    trackUrl.trim().removePrefix("/")
-                }
                 val cleanUrl = "https://www.youtube.com/watch?v=$videoId"
                 val streamExtractor = service.getStreamExtractor(cleanUrl)
                 streamExtractor.fetchPage()
@@ -168,6 +177,9 @@ object StreamResolver {
             }
 
             if (result.isSuccess) {
+                result.getOrNull()?.let { res ->
+                    streamCache[videoId] = Pair(res, System.currentTimeMillis())
+                }
                 return@withContext result
             }
             lastError = result.exceptionOrNull()

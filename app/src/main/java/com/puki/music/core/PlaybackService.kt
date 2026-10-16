@@ -93,13 +93,13 @@ class PlaybackService : MediaSessionService() {
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
-        // Resilient buffer: 45s min buffer, 180s max buffer, 2s playback start
+        // Instant responsive buffer: 45s min buffer, 180s max buffer, 500ms playback start (Instant start)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 45_000,
                 180_000,
-                2_000,
-                4_000
+                500,
+                1_500
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(30_000, true)
@@ -329,11 +329,12 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        val hasTrack = PlaybackStateManager.activeTrack.value != null
         val isQueueActive = PlaybackStateManager.currentQueue.value.isNotEmpty()
         val isResolving = PlaybackStateManager.isResolvingStream.value
         val isPlaying = session.player.playWhenReady
-        // Force service to remain FOREGROUND during queue playback, transitions, and screen off
-        val shouldKeepForeground = startInForegroundRequired || isPlaying || isQueueActive || isResolving
+        // Force service to remain FOREGROUND during queue playback, transitions, and screen off ONLY when a track exists
+        val shouldKeepForeground = hasTrack && (startInForegroundRequired || isPlaying || isQueueActive || isResolving)
         super.onUpdateNotification(session, shouldKeepForeground)
     }
 
