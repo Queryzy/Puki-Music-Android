@@ -42,8 +42,10 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
 import com.google.common.util.concurrent.ListenableFuture
+import com.puki.nuclear.core.AppUpdateManager
 import com.puki.nuclear.core.OfflineManager
 import com.puki.nuclear.core.PlaybackService
+import com.puki.nuclear.core.ReleaseInfo
 import com.puki.nuclear.core.StreamResolver
 import com.puki.nuclear.data.LocalMusicStore
 import com.puki.nuclear.data.Playlist
@@ -154,6 +156,68 @@ fun NuclearMainScreen(
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    // App In-App Update State
+    val currentVersionName = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.16"
+        } catch (_: Exception) {
+            "1.0.16"
+        }
+    }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var availableUpdate by remember { mutableStateOf<ReleaseInfo?>(null) }
+    var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var updateDownloadProgress by remember { mutableIntStateOf(0) }
+
+    fun checkAppUpdate(showToastIfLatest: Boolean = true) {
+        if (isCheckingUpdate) return
+        isCheckingUpdate = true
+        OfflineManager.downloadScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            val res = AppUpdateManager.checkForUpdate(currentVersionName)
+            isCheckingUpdate = false
+            res.onSuccess { release ->
+                if (release != null) {
+                    availableUpdate = release
+                } else if (showToastIfLatest) {
+                    Toast.makeText(context, "Puki Music sudah versi terbaru (v$currentVersionName)", Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure {
+                if (showToastIfLatest) {
+                    Toast.makeText(context, "Gagal memeriksa pembaruan: ${it.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun startUpdateDownload(release: ReleaseInfo) {
+        if (!AppUpdateManager.canInstallPackages(context)) {
+            Toast.makeText(context, "Mohon izinkan 'Instal aplikasi tidak dikenal' untuk Puki Music", Toast.LENGTH_LONG).show()
+            AppUpdateManager.openInstallPermissionSettings(context)
+            return
+        }
+        isDownloadingUpdate = true
+        updateDownloadProgress = 0
+        OfflineManager.downloadScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            val res = AppUpdateManager.downloadUpdateApk(context, release.downloadUrl) { pct ->
+                updateDownloadProgress = pct
+            }
+            isDownloadingUpdate = false
+            res.onSuccess { apkFile ->
+                availableUpdate = null
+                val installRes = AppUpdateManager.installUpdate(context, apkFile)
+                installRes.onFailure {
+                    Toast.makeText(context, "Gagal membuka installer: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }.onFailure {
+                Toast.makeText(context, "Gagal mengunduh update: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        checkAppUpdate(showToastIfLatest = false)
+    }
 
     fun triggerAutoDownloadIfAllowed(track: Track, label: String) {
         val normId = LocalMusicStore.normalizeId(track.id)
@@ -674,6 +738,9 @@ fun NuclearMainScreen(
                     offlineTracks = offlineTracks,
                     favoriteTrackIds = favoriteTrackIds,
                     offlineTrackIds = offlineTrackIds,
+                    currentVersionName = currentVersionName,
+                    isCheckingUpdate = isCheckingUpdate,
+                    onCheckUpdate = { checkAppUpdate(showToastIfLatest = true) },
                     onDownloadFavorites = { downloadUndownloadedFavorites() },
                     onClearAllOffline = {
                         OfflineManager.deleteAllOfflineTracks(context)
@@ -802,6 +869,21 @@ fun NuclearMainScreen(
             onAddToPlaylist = { playlistToAddTo = it },
             onFavoriteToggle = { handleFavoriteToggle(it) },
             onClose = { viewingArtist = null }
+        )
+    }
+
+    if (availableUpdate != null) {
+        UpdateDialog(
+            palette = palette,
+            releaseInfo = availableUpdate!!,
+            isDownloading = isDownloadingUpdate,
+            downloadProgress = updateDownloadProgress,
+            onDismiss = {
+                if (!isDownloadingUpdate) availableUpdate = null
+            },
+            onStartUpdate = {
+                availableUpdate?.let { startUpdateDownload(it) }
+            }
         )
     }
 }
@@ -2005,6 +2087,9 @@ fun SettingsTab(
     offlineTracks: List<Track>,
     favoriteTrackIds: Set<String> = emptySet(),
     offlineTrackIds: Set<String> = emptySet(),
+    currentVersionName: String = "1.0.16",
+    isCheckingUpdate: Boolean = false,
+    onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
     onClearAllOffline: () -> Unit
 ) {
@@ -2017,6 +2102,84 @@ fun SettingsTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // App Version & In-App Update Card
+        item {
+            Text(
+                text = "PEMBARUAN APLIKASI",
+                color = palette.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Puki Music",
+                            color = palette.textPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Versi $currentVersionName",
+                                color = palette.textSecondary,
+                                fontSize = 12.sp
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.primary.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Gitea Release",
+                                    color = palette.primary,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = onCheckUpdate,
+                        enabled = !isCheckingUpdate,
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = palette.background,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("MEMERIKSA...", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("CEK UPDATE", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
         // Storage Usage Card
         item {
             Text(
