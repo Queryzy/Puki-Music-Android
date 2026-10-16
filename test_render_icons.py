@@ -78,9 +78,9 @@ def render_style_dark(size=512):
     return canvas
 
 s1 = render_style_white(512)
-s1.save('/opt/data/projects/nuclear-android/preview_style_white.png')
+s1.save('/opt/data/projects/puki-music/preview_style_white.png')
 
 s2 = render_style_dark(512)
-s2.save('/opt/data/projects/nuclear-android/preview_style_dark.png')
+s2.save('/opt/data/projects/puki-music/preview_style_dark.png')
 
 print("Rendered preview_style_white.png and preview_style_dark.png")
