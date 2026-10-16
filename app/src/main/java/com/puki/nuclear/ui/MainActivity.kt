@@ -1043,10 +1043,10 @@ fun DashboardTab(
         } else {
             items(trendingTracks) { track ->
                 val normId = LocalMusicStore.normalizeId(track.id)
-                val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
+                val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
+                val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
                 val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
-                val trackProgress = OfflineManager.activeDownloads[track.id]
-                val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                 TrackItemCard(
                     track = track,
@@ -1054,7 +1054,7 @@ fun DashboardTab(
                     isFavorite = isFav,
                     isOffline = isOffline,
                     downloadProgress = trackProgress,
-                    isDownloading = isDownloading,
+                    isDownloading = isActivelyDownloading,
                     playCount = store.getPlayCount(track.id),
                     palette = palette,
                     onClick = { onTrackClick(track, trendingTracks) },
@@ -1239,10 +1239,10 @@ fun SearchTab(
             ) {
                 items(searchResults) { track ->
                     val normId = LocalMusicStore.normalizeId(track.id)
-                    val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                    val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
+                    val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
+                    val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
                     val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
-                    val trackProgress = OfflineManager.activeDownloads[track.id]
-                    val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                     TrackItemCard(
                         track = track,
@@ -1250,7 +1250,7 @@ fun SearchTab(
                         isFavorite = isFav,
                         isOffline = isOffline,
                         downloadProgress = trackProgress,
-                        isDownloading = isDownloading,
+                        isDownloading = isActivelyDownloading,
                         playCount = store.getPlayCount(track.id),
                         palette = palette,
                         onClick = { onTrackSelected(track, searchResults) },
@@ -1468,9 +1468,9 @@ fun LibraryTab(
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(favorites) { track ->
                         val normId = LocalMusicStore.normalizeId(track.id)
-                        val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
-                        val trackProgress = OfflineManager.activeDownloads[track.id]
-                        val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
+                        val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
+                        val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
+                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
 
                         TrackItemCard(
                             track = track,
@@ -1478,7 +1478,7 @@ fun LibraryTab(
                             isFavorite = true,
                             isOffline = isOffline,
                             downloadProgress = trackProgress,
-                            isDownloading = isDownloading,
+                            isDownloading = isActivelyDownloading,
                             palette = palette,
                             onClick = { onTrackClick(track, favorites) },
                             onArtistClick = onArtistClick,
@@ -1799,10 +1799,10 @@ fun PlaylistsTab(
                 ) {
                     items(currentTracks) { track ->
                         val normId = LocalMusicStore.normalizeId(track.id)
-                        val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                        val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
+                        val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
+                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id))
                         val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
-                        val trackProgress = OfflineManager.activeDownloads[track.id]
-                        val isActivelyDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                         TrackItemCard(
                             track = track,

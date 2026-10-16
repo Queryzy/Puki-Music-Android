@@ -53,6 +53,9 @@ fun TrackItemCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        val isActivelyDownloading = downloadProgress != null || isDownloading
+        val showOfflineStatus = isOffline && !isActivelyDownloading
+
         Box {
             AsyncImage(
                 model = track.thumbnailUrl,
@@ -63,7 +66,7 @@ fun TrackItemCard(
                     .background(Color.Black),
                 contentScale = ContentScale.Crop
             )
-            if (isOffline) {
+            if (showOfflineStatus) {
                 Box(
                     modifier = Modifier
                         .size(14.dp)
@@ -96,7 +99,7 @@ fun TrackItemCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (isOffline) {
+                if (showOfflineStatus) {
                     Text(
                         text = "OFFLINE",
                         color = palette.success,
@@ -171,10 +174,8 @@ fun TrackItemCard(
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (onDownloadClick != null) {
-                    val isActivelyDownloading = (downloadProgress != null || isDownloading) && !isOffline
-
                     IconButton(onClick = onDownloadClick, modifier = Modifier.size(36.dp)) {
-                        if (downloadProgress != null && !isOffline) {
+                        if (downloadProgress != null) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
                                 CircularProgressIndicator(
                                     progress = { (downloadProgress.coerceIn(0, 100)) / 100f },
@@ -191,7 +192,7 @@ fun TrackItemCard(
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
-                        } else if (isActivelyDownloading) {
+                        } else if (isDownloading && !isOffline) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
                                 color = palette.primary,
@@ -199,9 +200,9 @@ fun TrackItemCard(
                             )
                         } else {
                             Icon(
-                                imageVector = if (isOffline) Icons.Default.DownloadDone else Icons.Default.Download,
-                                contentDescription = if (isOffline) "Tersimpan" else "Unduh Offline",
-                                tint = if (isOffline) palette.success else palette.textSecondary,
+                                imageVector = if (showOfflineStatus) Icons.Default.DownloadDone else Icons.Default.Download,
+                                contentDescription = if (showOfflineStatus) "Tersimpan" else "Unduh Offline",
+                                tint = if (showOfflineStatus) palette.success else palette.textSecondary,
                                 modifier = Modifier.size(18.dp)
                             )
                         }

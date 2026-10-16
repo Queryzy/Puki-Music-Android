@@ -58,6 +58,12 @@ object OfflineManager {
 
     fun isTrackDownloaded(context: Context, trackId: String): Boolean {
         val norm = sanitizeFilename(trackId)
+        val rawId = trackId.trim()
+        val plainNorm = LocalMusicStore.normalizeId(trackId)
+        // If actively downloading right now, it is NOT downloaded yet
+        if (activeDownloads.containsKey(rawId) || activeDownloads.containsKey(plainNorm) || activeDownloads.containsKey(norm)) {
+            return false
+        }
         val audioFile = File(getStorageDir(context), "$norm.opus")
         val altFile = File(getStorageDir(context), "$norm.m4a")
         return (audioFile.exists() && audioFile.length() > 100_000) ||
@@ -85,6 +91,7 @@ object OfflineManager {
             val isOpus = streamUrl.contains("opus") || streamUrl.contains("mime=audio%2Fwebm")
             val ext = if (isOpus) "opus" else "m4a"
             val targetFile = File(storageDir, "$baseName.$ext")
+            val partFile = File(storageDir, "$baseName.$ext.part")
 
             val request = Request.Builder()
                 .url(streamUrl)
@@ -102,22 +109,33 @@ object OfflineManager {
                 val estimatedBytes = if (totalBytes > 0) totalBytes else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
                 var downloadedBytes = 0L
 
-                body.byteStream().use { input ->
-                    FileOutputStream(targetFile).use { output ->
-                        val buffer = ByteArray(16 * 1024)
-                        var read: Int
-                        var lastReported = 0
-                        while (input.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
-                            downloadedBytes += read
-                            val progress = ((downloadedBytes * 100) / estimatedBytes).coerceIn(0L, 99L).toInt()
-                            if (progress != lastReported) {
-                                lastReported = progress
-                                onProgress(progress)
+                try {
+                    body.byteStream().use { input ->
+                        FileOutputStream(partFile).use { output ->
+                            val buffer = ByteArray(16 * 1024)
+                            var read: Int
+                            var lastReported = -1
+                            while (input.read(buffer).also { read = it } != -1) {
+                                output.write(buffer, 0, read)
+                                downloadedBytes += read
+                                val progress = ((downloadedBytes * 100) / estimatedBytes).coerceIn(0L, 99L).toInt()
+                                if (progress != lastReported) {
+                                    lastReported = progress
+                                    onProgress(progress)
+                                }
                             }
+                            output.flush()
                         }
-                        output.flush()
                     }
+
+                    if (targetFile.exists()) targetFile.delete()
+                    if (!partFile.renameTo(targetFile)) {
+                        partFile.copyTo(targetFile, overwrite = true)
+                        partFile.delete()
+                    }
+                } catch (e: Exception) {
+                    if (partFile.exists()) partFile.delete()
+                    throw e
                 }
             }
 
@@ -158,13 +176,17 @@ object OfflineManager {
         context: Context,
         track: Track
     ): Result<Track> {
+        val normId = LocalMusicStore.normalizeId(track.id)
         activeDownloads[track.id] = 0
+        activeDownloads[normId] = 0
         return try {
             downloadTrack(context, track) { pct ->
                 activeDownloads[track.id] = pct
+                activeDownloads[normId] = pct
             }
         } finally {
             activeDownloads.remove(track.id)
+            activeDownloads.remove(normId)
         }
     }
 
@@ -199,10 +221,13 @@ object OfflineManager {
                     overallPercent = ((index * 100) / toDownload.size)
                 )
 
+                val normId = LocalMusicStore.normalizeId(track.id)
                 activeDownloads[track.id] = 0
+                activeDownloads[normId] = 0
                 var res = try {
                     downloadTrack(context, track) { pct ->
                         activeDownloads[track.id] = pct
+                        activeDownloads[normId] = pct
                         val overall = (((index * 100) + pct) / toDownload.size).coerceIn(0, 100)
                         activeBatch.value = activeBatch.value?.copy(
                             currentTrackPercent = pct,
@@ -219,6 +244,7 @@ object OfflineManager {
                     res = try {
                         downloadTrack(context, track) { pct ->
                             activeDownloads[track.id] = pct
+                            activeDownloads[normId] = pct
                             val overall = (((index * 100) + pct) / toDownload.size).coerceIn(0, 100)
                             activeBatch.value = activeBatch.value?.copy(
                                 currentTrackPercent = pct,
@@ -231,6 +257,7 @@ object OfflineManager {
                 }
 
                 activeDownloads.remove(track.id)
+                activeDownloads.remove(normId)
 
                 if (res.isSuccess) {
                     completed++
