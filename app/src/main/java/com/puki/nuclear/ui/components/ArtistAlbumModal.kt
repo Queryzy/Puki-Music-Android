@@ -1,0 +1,441 @@
+package com.puki.nuclear.ui.components
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import com.puki.nuclear.core.OfflineManager
+import com.puki.nuclear.core.StreamResolver
+import com.puki.nuclear.data.LocalMusicStore
+import com.puki.nuclear.model.Album
+import com.puki.nuclear.model.Track
+import com.puki.nuclear.ui.theme.NuclearPalette
+import kotlinx.coroutines.launch
+
+@Composable
+fun ArtistAlbumModal(
+    artistName: String,
+    palette: NuclearPalette,
+    store: LocalMusicStore,
+    downloadingIds: List<String>,
+    activeTrack: Track?,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    onMixPlayClick: (List<Track>) -> Unit,
+    onDownloadTrack: (Track) -> Unit,
+    onDownloadAlbum: (List<Track>, String) -> Unit,
+    onAddToPlaylist: (Track) -> Unit,
+    onClose: () -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Albums, 1 = Top Tracks
+    var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
+    var topTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var isLoadingAlbums by remember { mutableStateOf(true) }
+    var isLoadingTracks by remember { mutableStateOf(false) }
+
+    // Active expanded album details
+    var selectedAlbum by remember { mutableStateOf<Album?>(null) }
+    var albumTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var isLoadingAlbumTracks by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Load albums on launch
+    LaunchedEffect(artistName) {
+        isLoadingAlbums = true
+        val res = StreamResolver.searchAlbums(artistName)
+        res.onSuccess {
+            albums = it
+        }
+        isLoadingAlbums = false
+    }
+
+    // Load top tracks when user switches to tab 1
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == 1 && topTracks.isEmpty() && !isLoadingTracks) {
+            isLoadingTracks = true
+            val res = StreamResolver.searchTracks("$artistName popular songs hits")
+            res.onSuccess {
+                topTracks = it
+            }
+            isLoadingTracks = false
+        }
+    }
+
+    fun openAlbum(album: Album) {
+        selectedAlbum = album
+        isLoadingAlbumTracks = true
+        scope.launch {
+            val res = StreamResolver.getAlbumTracks(album.url)
+            res.onSuccess {
+                albumTracks = it
+            }.onFailure {
+                Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
+            }
+            isLoadingAlbumTracks = false
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = palette.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        IconButton(onClick = {
+                            if (selectedAlbum != null) {
+                                selectedAlbum = null
+                                albumTracks = emptyList()
+                            } else {
+                                onClose()
+                            }
+                        }) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = palette.textPrimary
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = if (selectedAlbum != null) selectedAlbum!!.title else artistName,
+                                color = palette.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = if (selectedAlbum != null) "ALBUM OLEH $artistName" else "DISKOGRAFI & DAFTAR ALBUM",
+                                color = palette.primary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = palette.textSecondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (selectedAlbum != null) {
+                    // ── Album Detail View ───────────────────────────────────
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.surfaceVariant)
+                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AsyncImage(
+                            model = selectedAlbum!!.thumbnailUrl,
+                            contentDescription = selectedAlbum!!.title,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black),
+                            contentScale = ContentScale.Crop
+                        )
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = selectedAlbum!!.title,
+                                color = palette.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${albumTracks.size.takeIf { it > 0 } ?: selectedAlbum!!.trackCount} Lagu • $artistName",
+                                color = palette.secondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Action buttons for Album
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (albumTracks.isNotEmpty()) onMixPlayClick(albumTracks)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("PUTAR ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+
+                        val activeBatch = OfflineManager.activeBatch.value
+                        val isBatchDownloadingThis = activeBatch != null && activeBatch.batchId == selectedAlbum!!.id
+
+                        Button(
+                            onClick = {
+                                if (albumTracks.isNotEmpty() && !isBatchDownloadingThis) {
+                                    onDownloadAlbum(albumTracks, selectedAlbum!!.title)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isBatchDownloadingThis) palette.surfaceVariant else palette.secondary),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            if (isBatchDownloadingThis && activeBatch != null) {
+                                Text("${activeBatch.overallPercent}% UNDUH", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            } else {
+                                Icon(Icons.Default.Download, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("UNDUH 1 ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    val currentBatch = OfflineManager.activeBatch.value
+                    if (currentBatch != null && currentBatch.batchId == selectedAlbum!!.id) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        BatchDownloadBanner(batch = currentBatch, palette = palette)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (isLoadingAlbumTracks) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = palette.primary)
+                        }
+                    } else if (albumTracks.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Daftar lagu album tidak ditemukan", color = palette.textSecondary, fontSize = 12.sp)
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(albumTracks) { track ->
+                                val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                                val trackProgress = OfflineManager.activeDownloads[track.id]
+                                val isDownloading = trackProgress != null || downloadingIds.contains(track.id)
+
+                                TrackItemCard(
+                                    track = track,
+                                    isSelected = activeTrack?.id == track.id,
+                                    isFavorite = store.isFavorite(track.id),
+                                    isOffline = isOffline,
+                                    downloadProgress = trackProgress,
+                                    isDownloading = isDownloading,
+                                    palette = palette,
+                                    onClick = { onTrackClick(track, albumTracks) },
+                                    onFavoriteToggle = { store.toggleFavorite(track) },
+                                    onAddToPlaylist = { onAddToPlaylist(track) },
+                                    onDownloadClick = { onDownloadTrack(track) }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // ── Tab Switcher: [ ALBUM & EP ] vs [ TOP TRACKS ] ──────
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surfaceVariant)
+                            .padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (selectedTab == 0) palette.primary else palette.surfaceVariant)
+                                .clickable { selectedTab = 0 }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "ALBUM & EP (${albums.size})",
+                                color = if (selectedTab == 0) palette.background else palette.textSecondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (selectedTab == 1) palette.primary else palette.surfaceVariant)
+                                .clickable { selectedTab = 1 }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "LAGU POPULER",
+                                color = if (selectedTab == 1) palette.background else palette.textSecondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (selectedTab == 0) {
+                        // Albums List
+                        if (isLoadingAlbums) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = palette.primary)
+                            }
+                        } else if (albums.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.Album, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(48.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Belum ada album ditemukan untuk $artistName", color = palette.textSecondary, fontSize = 12.sp)
+                                }
+                            }
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(albums) { album ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { openAlbum(album) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.border)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            AsyncImage(
+                                                model = album.thumbnailUrl,
+                                                contentDescription = album.title,
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color.Black),
+                                                contentScale = ContentScale.Crop
+                                            )
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = album.title,
+                                                    color = palette.textPrimary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "${if (album.trackCount > 0) "${album.trackCount} lagu • " else ""}${album.artist}",
+                                                    color = palette.textSecondary,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+
+                                            Icon(
+                                                Icons.Default.ChevronRight,
+                                                contentDescription = "Lihat Album",
+                                                tint = palette.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Top Tracks List
+                        if (isLoadingTracks) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = palette.primary)
+                            }
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(topTracks) { track ->
+                                    val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                                    val trackProgress = OfflineManager.activeDownloads[track.id]
+                                    val isDownloading = trackProgress != null || downloadingIds.contains(track.id)
+
+                                    TrackItemCard(
+                                        track = track,
+                                        isSelected = activeTrack?.id == track.id,
+                                        isFavorite = store.isFavorite(track.id),
+                                        isOffline = isOffline,
+                                        downloadProgress = trackProgress,
+                                        isDownloading = isDownloading,
+                                        palette = palette,
+                                        onClick = { onTrackClick(track, topTracks) },
+                                        onFavoriteToggle = { store.toggleFavorite(track) },
+                                        onAddToPlaylist = { onAddToPlaylist(track) },
+                                        onDownloadClick = { onDownloadTrack(track) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

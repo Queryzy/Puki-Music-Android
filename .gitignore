@@ -1,0 +1,13 @@
+*.apk
+.gradle/
+build/
+app/build/
+*.iml
+.idea/
+local.properties
+.DS_Store
+*.pyc
+__pycache__/
+preview_*.png
+test_*.png
+var*.png

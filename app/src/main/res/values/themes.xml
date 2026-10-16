@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.PukiMusic" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#141214</item>
+        <item name="android:navigationBarColor">#141214</item>
+        <item name="android:windowBackground">#141214</item>
+    </style>
+</resources>
