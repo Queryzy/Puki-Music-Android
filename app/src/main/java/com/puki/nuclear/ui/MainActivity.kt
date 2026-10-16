@@ -86,12 +86,6 @@ class MainActivity : ComponentActivity() {
         }
 
         PlaybackStateManager.initContext(this)
-        try {
-            val serviceIntent = Intent(this, PlaybackService::class.java)
-            ContextCompat.startForegroundService(this, serviceIntent)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to start PlaybackService: ${e.message}")
-        }
 
         val sessionToken = SessionToken(
             this,
@@ -2157,6 +2151,26 @@ fun SettingsTab(
     var isAutoDlLiked by remember { mutableStateOf(store.isAutoDownloadLikedEnabled()) }
     var networkPref by remember { mutableStateOf(store.getAutoDownloadNetworkPreference()) }
 
+    var offlineUsageText by remember { mutableStateOf("Memuat...") }
+    var availableStorageText by remember { mutableStateOf("Memuat...") }
+    var undownloadedCount by remember { mutableStateOf(0) }
+
+    LaunchedEffect(offlineTracks.size, favoritesList.size) {
+        withContext(Dispatchers.IO) {
+            val usage = OfflineManager.getFormattedOfflineUsage(context)
+            val available = OfflineManager.getFormattedAvailableDeviceStorage(context)
+            val count = favoritesList.count {
+                val norm = LocalMusicStore.normalizeId(it.id)
+                !offlineTrackIds.contains(norm) && !OfflineManager.isTrackDownloaded(context, it.id)
+            }
+            withContext(Dispatchers.Main) {
+                offlineUsageText = usage
+                availableStorageText = available
+                undownloadedCount = count
+            }
+        }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -2266,11 +2280,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.22: Decoupled Standalone Playback Engine (Spotify/YT Music Architecture):\n" +
-                               "  - Playback Service berjalan mandiri sebagai Started Foreground Service (START_STICKY), tidak lagi menumpang siklus hidup UI.\n" +
-                               "  - Logika antrean (Next/Previous), auto-advance saat lagu habis, dan resolver stream YouTube berjalan di Process Scope permanen (bebas freeze saat layar mati di MIUI/POCO/Android).\n" +
-                               "  - Penambahan ExoPlayer Disk Cache (512 MB LRU Cache) untuk buffering streaming anti putus-putus saat sinyal seluler goyang.\n" +
-                               "  - Validasi bitstream berkas offline dan eliminasi chunk korup.\n" +
+                        text = "• v1.0.23: Stabilitas Penuh Audio Background & Optimasi ANR (Spotify/YT Music Standard):\n" +
+                               "  - Registrasi NotificationChannel resmi ('Pemutaran Musik Puki') dengan IMPORTANCE_LOW, menjamin Foreground Service aktif sah di Android 14 / HyperOS tanpa dibunuh OS.\n" +
+                               "  - Memperbaiki ANR (Application Not Responding) dengan menghapus pemanggilan prematur startForegroundService dan mengandalkan lifecycle native Media3.\n" +
+                               "  - Melindungi playback engine saat recent apps di-swipe (tidak lagi mematikan service saat antrean musik aktif).\n" +
+                               "  - Mengalihkan kalkulasi disk I/O & status offline di tab Settings ke background thread (Dispatchers.IO) agar UI tetap responsif 60-120 FPS.\n" +
+                               "• v1.0.22: Decoupled Standalone Playback Engine, 512MB ExoPlayer Disk Cache, dan Process Scope Queue.\n" +
                                "• Fix Media Notification & Lock Screen Artwork penuh beserta kontrol Next/Prev.\n" +
                                "• Tab Antrean Putar (Queue Tracklist) di Expanded Player.",
                         color = palette.textSecondary,
@@ -2310,7 +2325,7 @@ fun SettingsTab(
                                 fontSize = 11.sp
                             )
                             Text(
-                                text = OfflineManager.getFormattedOfflineUsage(context),
+                                text = offlineUsageText,
                                 color = palette.textPrimary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 20.sp
@@ -2351,7 +2366,7 @@ fun SettingsTab(
                             fontSize = 12.sp
                         )
                         Text(
-                            text = OfflineManager.getFormattedAvailableDeviceStorage(context),
+                            text = availableStorageText,
                             color = palette.success,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
@@ -2448,10 +2463,6 @@ fun SettingsTab(
                         BatchDownloadBanner(batch = currentBatch, palette = palette)
                     }
 
-                    val undownloadedCount = favoritesList.count {
-                        val norm = LocalMusicStore.normalizeId(it.id)
-                        !offlineTrackIds.contains(norm) && !OfflineManager.isTrackDownloaded(context, it.id)
-                    }
                     if (undownloadedCount > 0 && currentBatch == null) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(

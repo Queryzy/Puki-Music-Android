@@ -1,7 +1,11 @@
 package com.puki.nuclear.core
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.PowerManager
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -26,10 +30,33 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    companion object {
+        const val PLAYBACK_CHANNEL_ID = "puki_playback_channel"
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                PLAYBACK_CHANNEL_ID,
+                "Pemutaran Musik Puki",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Notifikasi pemutar audio latar belakang Puki Music"
+                setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
         PlaybackStateManager.initContext(applicationContext)
+
+        // Register valid Android Notification Channel to satisfy Foreground Service contracts
+        createNotificationChannel()
 
         // Acquire dedicated PARTIAL_WAKE_LOCK to prevent MIUI / HyperOS Doze from freezing audio engine
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -158,7 +185,7 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, forwardingPlayer).build()
 
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
-            .setChannelId("puki_playback_channel")
+            .setChannelId(PLAYBACK_CHANNEL_ID)
             .build()
         setMediaNotificationProvider(notificationProvider)
     }
@@ -174,7 +201,9 @@ class PlaybackService : MediaSessionService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
+        val isQueueActive = PlaybackStateManager.currentQueue.value.isNotEmpty()
+        // Do NOT stop service if playback queue is active, playing, or resolving
+        if (!isQueueActive && (player == null || !player.playWhenReady)) {
             stopSelf()
         }
     }

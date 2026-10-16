@@ -130,14 +130,6 @@ object PlaybackStateManager {
     fun playTrack(context: Context, track: Track, newQueue: List<Track>? = null) {
         initContext(context)
 
-        // Ensure Service is started as standalone Started Foreground Service
-        try {
-            val serviceIntent = Intent(context, PlaybackService::class.java)
-            ContextCompat.startForegroundService(context, serviceIntent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start ForegroundService: ${e.message}")
-        }
-
         resolveJob?.cancel()
         _activeTrack.value = track
         _errorMessage.value = null
