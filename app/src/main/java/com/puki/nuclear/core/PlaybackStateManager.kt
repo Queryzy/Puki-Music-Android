@@ -219,7 +219,13 @@ object PlaybackStateManager {
             }.onFailure { err ->
                 withContext(Dispatchers.Main) {
                     _isResolvingStream.value = false
-                    _errorMessage.value = "Gagal memuat stream audio: ${err.message}"
+                    val queue = _currentQueue.value
+                    if (queue.size > 1) {
+                        Log.w(TAG, "Stream failed for track ${track.title}. Auto-advancing to next track.")
+                        playNext()
+                    } else {
+                        _errorMessage.value = "Gagal memuat stream audio: ${err.message}"
+                    }
                 }
             }
         }

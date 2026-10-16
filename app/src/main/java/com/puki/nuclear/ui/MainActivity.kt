@@ -2287,12 +2287,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.25: Active Pre-Cache Engine Ala Spotify & YouTube Music (CacheWriter 1:1):\n" +
-                               "  - Menyematkan CacheWriter di background worker: menyedot 100% berkas audio ke SimpleCache lokal (512 MB) dalam hitungan detik pertama.\n" +
-                               "  - Pre-caching lagu berikutnya di antrean secara otomatis: transisi instan 0ms tanpa buffering atau jeda internet.\n" +
-                               "  - Sinkronisasi User-Agent browser murni untuk mengeliminasi rate-limiting YouTube Googlevideo CDN.\n" +
-                               "• v1.0.24: Fix Audio Freeze Saat Layar Mati (Buffer Lock & WifiLock Guard).\n" +
-                               "• v1.0.23: Registrasi NotificationChannel resmi, eliminasi ANR, dan optimasi disk I/O asinkron.",
+                        text = "• v1.0.26: Fix DNS Drop & Auto-Retry Resiliency (Bypass UnknownHostException):\n" +
+                               "  - DNS Fallback Resolver: menyematkan IP Anycast resmi Google cadangan saat DNS seluler operator (Telkomsel/Indosat) mengalami timeout.\n" +
+                               "  - Exponential Backoff Auto-Retry (3x) di StreamResolver sehingga koneksi tersendat tidak langsung mematikan lagu atau memunculkan kotak merah.\n" +
+                               "  - Auto-Advance Skip: otomatis melompat ke lagu berikutnya di antrean jika trek bermasalah.\n" +
+                               "• v1.0.25: Active Pre-Cache Engine Ala Spotify & YouTube Music (CacheWriter 1:1).\n" +
+                               "• v1.0.24: Fix Audio Freeze Saat Layar Mati (Buffer Lock & WifiLock Guard).",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

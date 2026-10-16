@@ -1,6 +1,7 @@
 package com.puki.nuclear
 
 import android.app.Application
+import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -10,6 +11,7 @@ import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 class PukiApp : Application() {
@@ -17,7 +19,33 @@ class PukiApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        val resilientDns = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                return try {
+                    Dns.SYSTEM.lookup(hostname)
+                } catch (e: Exception) {
+                    try {
+                        val all = InetAddress.getAllByName(hostname).toList()
+                        if (all.isNotEmpty()) all else throw e
+                    } catch (_: Exception) {
+                        if (hostname.contains("youtubei.googleapis.com", ignoreCase = true)) {
+                            // High-availability Google Anycast IPs to bypass Indonesian cellular DNS drops
+                            listOf(
+                                InetAddress.getByName("142.250.190.42"),
+                                InetAddress.getByName("172.217.16.202"),
+                                InetAddress.getByName("142.250.200.42")
+                            )
+                        } else {
+                            throw e
+                        }
+                    }
+                }
+            }
+        }
+
         val client = OkHttpClient.Builder()
+            .dns(resilientDns)
+            .retryOnConnectionFailure(true)
             .connectTimeout(25, TimeUnit.SECONDS)
             .readTimeout(25, TimeUnit.SECONDS)
             .followRedirects(true)

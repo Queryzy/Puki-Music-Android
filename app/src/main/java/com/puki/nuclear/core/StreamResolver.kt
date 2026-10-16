@@ -109,61 +109,73 @@ object StreamResolver {
         val likeCount: Long
     )
 
-    suspend fun resolveAudioStreamDetailed(trackUrl: String): Result<StreamResolution> = withContext(Dispatchers.IO) {
-        runCatching {
-            val service = ServiceList.YouTube
-            val videoId = if (trackUrl.contains("v=")) {
-                trackUrl.substringAfter("v=").substringBefore("&")
-            } else if (trackUrl.contains("youtu.be/")) {
-                trackUrl.substringAfter("youtu.be/").substringBefore("?")
-            } else {
-                trackUrl.trim().removePrefix("/")
-            }
-            val cleanUrl = "https://www.youtube.com/watch?v=$videoId"
-            val streamExtractor = service.getStreamExtractor(cleanUrl)
-            streamExtractor.fetchPage()
+    suspend fun resolveAudioStreamDetailed(trackUrl: String, maxRetries: Int = 3): Result<StreamResolution> = withContext(Dispatchers.IO) {
+        var lastError: Throwable? = null
+        for (attempt in 1..maxRetries) {
+            val result = runCatching {
+                val service = ServiceList.YouTube
+                val videoId = if (trackUrl.contains("v=")) {
+                    trackUrl.substringAfter("v=").substringBefore("&")
+                } else if (trackUrl.contains("youtu.be/")) {
+                    trackUrl.substringAfter("youtu.be/").substringBefore("?")
+                } else {
+                    trackUrl.trim().removePrefix("/")
+                }
+                val cleanUrl = "https://www.youtube.com/watch?v=$videoId"
+                val streamExtractor = service.getStreamExtractor(cleanUrl)
+                streamExtractor.fetchPage()
 
-            val views = try { streamExtractor.viewCount } catch (_: Exception) { 0L }
-            val likes = try { streamExtractor.likeCount } catch (_: Exception) { 0L }
+                val views = try { streamExtractor.viewCount } catch (_: Exception) { 0L }
+                val likes = try { streamExtractor.likeCount } catch (_: Exception) { 0L }
 
-            val audioStreams = streamExtractor.audioStreams
-            if (audioStreams.isNotEmpty()) {
-                val sortedStreams = audioStreams.sortedWith(
-                    compareByDescending<AudioStream> { stream ->
-                        val isOpus = stream.codec?.contains("opus", ignoreCase = true) == true ||
-                                     stream.format?.name?.contains("WEB", ignoreCase = true) == true
-                        val bitrate = stream.averageBitrate.takeIf { it > 0 } ?: stream.bitrate
-                        if (isOpus) 1_000_000 + bitrate else bitrate
+                val audioStreams = streamExtractor.audioStreams
+                if (audioStreams.isNotEmpty()) {
+                    val sortedStreams = audioStreams.sortedWith(
+                        compareByDescending<AudioStream> { stream ->
+                            val isOpus = stream.codec?.contains("opus", ignoreCase = true) == true ||
+                                         stream.format?.name?.contains("WEB", ignoreCase = true) == true
+                            val bitrate = stream.averageBitrate.takeIf { it > 0 } ?: stream.bitrate
+                            if (isOpus) 1_000_000 + bitrate else bitrate
+                        }
+                    )
+                    val bestAudio = sortedStreams.firstOrNull {
+                        !it.url.isNullOrBlank() || !it.content.isNullOrBlank()
                     }
-                )
-                val bestAudio = sortedStreams.firstOrNull {
-                    !it.url.isNullOrBlank() || !it.content.isNullOrBlank()
+                    if (bestAudio != null) {
+                        val url = if (!bestAudio.url.isNullOrBlank()) bestAudio.url else bestAudio.content
+                        return@runCatching StreamResolution(
+                            streamUrl = url ?: throw IllegalStateException("Audio URL kosong"),
+                            viewCount = views,
+                            likeCount = likes
+                        )
+                    }
                 }
-                if (bestAudio != null) {
-                    val url = if (!bestAudio.url.isNullOrBlank()) bestAudio.url else bestAudio.content
-                    return@runCatching StreamResolution(
-                        streamUrl = url ?: throw IllegalStateException("Audio URL kosong"),
-                        viewCount = views,
-                        likeCount = likes
-                    )
+
+                val videoStreams = streamExtractor.videoStreams
+                if (videoStreams.isNotEmpty()) {
+                    val fallbackStream = videoStreams.firstOrNull { it.url != null || it.content != null }
+                    if (fallbackStream != null) {
+                        val url = if (!fallbackStream.url.isNullOrBlank()) fallbackStream.url else fallbackStream.content
+                        return@runCatching StreamResolution(
+                            streamUrl = url ?: throw IllegalStateException("Fallback URL kosong"),
+                            viewCount = views,
+                            likeCount = likes
+                        )
+                    }
                 }
+
+                throw IllegalStateException("Stream CDN tidak ditemukan untuk track ini")
             }
 
-            val videoStreams = streamExtractor.videoStreams
-            if (videoStreams.isNotEmpty()) {
-                val fallbackStream = videoStreams.firstOrNull { it.url != null || it.content != null }
-                if (fallbackStream != null) {
-                    val url = if (!fallbackStream.url.isNullOrBlank()) fallbackStream.url else fallbackStream.content
-                    return@runCatching StreamResolution(
-                        streamUrl = url ?: throw IllegalStateException("Fallback URL kosong"),
-                        viewCount = views,
-                        likeCount = likes
-                    )
-                }
+            if (result.isSuccess) {
+                return@withContext result
             }
-
-            throw IllegalStateException("Stream CDN tidak ditemukan untuk track ini")
+            lastError = result.exceptionOrNull()
+            if (attempt < maxRetries) {
+                kotlinx.coroutines.delay(attempt * 600L)
+            }
         }
+        Result.failure(lastError ?: IllegalStateException("Gagal memuat stream setelah $maxRetries percobaan"))
     }
 
     suspend fun resolveAudioStream(trackUrl: String): Result<String> {
