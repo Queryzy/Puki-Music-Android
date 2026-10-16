@@ -134,11 +134,19 @@ fun NuclearMainScreen(
     var playlistsList by remember { mutableStateOf(store.getPlaylists()) }
     val downloadingTrackIds = remember { mutableStateListOf<String>() }
 
+    val favoriteTrackIds = remember(favoritesList) {
+        favoritesList.map { LocalMusicStore.normalizeId(it.id) }.toSet()
+    }
+    val offlineTrackIds = remember(offlineTracks) {
+        offlineTracks.map { LocalMusicStore.normalizeId(it.id) }.toSet()
+    }
+
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     fun triggerAutoDownloadIfAllowed(track: Track, label: String) {
-        if (OfflineManager.isTrackDownloaded(context, track.id)) return
+        val normId = LocalMusicStore.normalizeId(track.id)
+        if (offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)) return
         if (OfflineManager.activeDownloads.containsKey(track.id)) return
 
         val netPref = store.getAutoDownloadNetworkPreference()
@@ -148,10 +156,14 @@ fun NuclearMainScreen(
             return
         }
 
+        Toast.makeText(context, "Auto-download $label: Mengunduh '${track.title}'...", Toast.LENGTH_SHORT).show()
         scope.launch {
             val res = OfflineManager.downloadTrackWithProgress(context, track)
             res.onSuccess {
                 offlineTracks = store.getOfflineTracks()
+                Toast.makeText(context, "Tersimpan offline: '${track.title}'", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Gagal auto-download '${track.title}': ${it.localizedMessage}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -159,8 +171,13 @@ fun NuclearMainScreen(
     fun handleFavoriteToggle(track: Track) {
         val isNowFav = store.toggleFavorite(track)
         favoritesList = store.getFavorites()
-        if (isNowFav && store.isAutoDownloadLikedEnabled()) {
-            triggerAutoDownloadIfAllowed(track, "Favorit")
+        if (isNowFav) {
+            Toast.makeText(context, "Ditambahkan ke Favorit ❤️", Toast.LENGTH_SHORT).show()
+            if (store.isAutoDownloadLikedEnabled()) {
+                triggerAutoDownloadIfAllowed(track, "Favorit")
+            }
+        } else {
+            Toast.makeText(context, "Dihapus dari Favorit", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -281,6 +298,24 @@ fun NuclearMainScreen(
             offlineTracks = store.getOfflineTracks()
             Toast.makeText(context, "Selesai unduh '$playlistName' ($completed/${toDownload.size} lagu tersimpan offline)", Toast.LENGTH_LONG).show()
         }
+    }
+
+    fun downloadUndownloadedFavorites() {
+        val undownloaded = favoritesList.filterNot {
+            offlineTrackIds.contains(LocalMusicStore.normalizeId(it.id)) || OfflineManager.isTrackDownloaded(context, it.id)
+        }
+        if (undownloaded.isEmpty()) {
+            Toast.makeText(context, "Semua lagu favorit sudah tersimpan offline!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val netPref = store.getAutoDownloadNetworkPreference()
+        if (!OfflineManager.canAutoDownload(context, netPref)) {
+            val requirement = if (netPref == NetworkDownloadPreference.WIFI_ONLY) "Wi-Fi" else "Koneksi Internet"
+            Toast.makeText(context, "Auto-download ditunda: Menunggu $requirement", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(context, "Auto-Download: Mengunduh ${undownloaded.size} lagu favorit...", Toast.LENGTH_SHORT).show()
+        downloadPlaylist(undownloaded, "Lagu Disukai")
     }
 
     // Continuous playback & repeat queue listener
@@ -524,6 +559,8 @@ fun NuclearMainScreen(
                     activeTrack = activeTrack,
                     store = store,
                     downloadingIds = downloadingTrackIds,
+                    favoriteIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
                     onTrackClick = { track, list -> playTrack(track, list) },
                     onMixPlayClick = { list -> startMixPlay(list) },
                     onDownloadClick = { toggleOfflineDownload(it) },
@@ -537,6 +574,8 @@ fun NuclearMainScreen(
                     activeTrack = activeTrack,
                     store = store,
                     downloadingIds = downloadingTrackIds,
+                    favoriteIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
                     onTrackSelected = { track, list -> playTrack(track, list) },
                     onMixPlayClick = { list -> startMixPlay(list) },
                     onDownloadClick = { toggleOfflineDownload(it) },
@@ -552,6 +591,8 @@ fun NuclearMainScreen(
                     activeTrack = activeTrack,
                     store = store,
                     downloadingIds = downloadingTrackIds,
+                    favoriteIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
                     onTrackClick = { track, list -> playTrack(track, list) },
                     onMixPlayClick = { list -> startMixPlay(list) },
                     onDownloadClick = { toggleOfflineDownload(it) },
@@ -572,6 +613,8 @@ fun NuclearMainScreen(
                     activeTrack = activeTrack,
                     store = store,
                     downloadingIds = downloadingTrackIds,
+                    favoriteIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
                     onSelectPlaylist = { activePlaylist = it },
                     onBackToPlaylists = {
                         activePlaylist = null
@@ -612,7 +655,11 @@ fun NuclearMainScreen(
                     palette = palette,
                     context = context,
                     store = store,
+                    favoritesList = favoritesList,
                     offlineTracks = offlineTracks,
+                    favoriteTrackIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
+                    onDownloadFavorites = { downloadUndownloadedFavorites() },
                     onClearAllOffline = {
                         OfflineManager.deleteAllOfflineTracks(context)
                         offlineTracks = store.getOfflineTracks()
@@ -707,15 +754,12 @@ fun NuclearMainScreen(
             onAddToPlaylist = {
                 playlistToAddTo = activeTrack
             },
+            isFavorite = activeTrack?.let { favoriteTrackIds.contains(LocalMusicStore.normalizeId(it.id)) } ?: false,
             onFavoritesChanged = {
                 favoritesList = store.getFavorites()
             },
             onFavoriteToggle = {
-                val isFav = store.toggleFavorite(activeTrack!!)
-                favoritesList = store.getFavorites()
-                if (isFav && store.isAutoDownloadLikedEnabled()) {
-                    triggerAutoDownloadIfAllowed(activeTrack!!, "Favorit")
-                }
+                activeTrack?.let { handleFavoriteToggle(it) }
             },
             onArtistClick = { artist ->
                 showExpandedPlayer = false
@@ -734,6 +778,8 @@ fun NuclearMainScreen(
             store = store,
             downloadingIds = downloadingTrackIds,
             activeTrack = activeTrack,
+            favoriteIds = favoriteTrackIds,
+            offlineTrackIds = offlineTrackIds,
             onTrackClick = { track, list -> playTrack(track, list) },
             onMixPlayClick = { list -> startMixPlay(list) },
             onDownloadTrack = { toggleOfflineDownload(it) },
@@ -753,6 +799,8 @@ fun DashboardTab(
     activeTrack: Track?,
     store: LocalMusicStore,
     downloadingIds: List<String>,
+    favoriteIds: Set<String> = emptySet(),
+    offlineTrackIds: Set<String> = emptySet(),
     onTrackClick: (Track, List<Track>) -> Unit,
     onMixPlayClick: (List<Track>) -> Unit,
     onDownloadClick: (Track) -> Unit,
@@ -990,14 +1038,16 @@ fun DashboardTab(
             }
         } else {
             items(trendingTracks) { track ->
-                val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                val normId = LocalMusicStore.normalizeId(track.id)
+                val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
                 val trackProgress = OfflineManager.activeDownloads[track.id]
                 val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                 TrackItemCard(
                     track = track,
                     isSelected = activeTrack?.id == track.id,
-                    isFavorite = store.isFavorite(track.id),
+                    isFavorite = isFav,
                     isOffline = isOffline,
                     downloadProgress = trackProgress,
                     isDownloading = isDownloading,
@@ -1029,6 +1079,8 @@ fun SearchTab(
     activeTrack: Track?,
     store: LocalMusicStore,
     downloadingIds: List<String>,
+    favoriteIds: Set<String> = emptySet(),
+    offlineTrackIds: Set<String> = emptySet(),
     onTrackSelected: (Track, List<Track>) -> Unit,
     onMixPlayClick: (List<Track>) -> Unit,
     onDownloadClick: (Track) -> Unit,
@@ -1182,14 +1234,16 @@ fun SearchTab(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(searchResults) { track ->
-                    val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                    val normId = LocalMusicStore.normalizeId(track.id)
+                    val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                    val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
                     val trackProgress = OfflineManager.activeDownloads[track.id]
                     val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                     TrackItemCard(
                         track = track,
                         isSelected = activeTrack?.id == track.id,
-                        isFavorite = store.isFavorite(track.id),
+                        isFavorite = isFav,
                         isOffline = isOffline,
                         downloadProgress = trackProgress,
                         isDownloading = isDownloading,
@@ -1290,6 +1344,8 @@ fun LibraryTab(
     activeTrack: Track?,
     store: LocalMusicStore,
     downloadingIds: List<String>,
+    favoriteIds: Set<String> = emptySet(),
+    offlineTrackIds: Set<String> = emptySet(),
     onTrackClick: (Track, List<Track>) -> Unit,
     onMixPlayClick: (List<Track>) -> Unit,
     onDownloadClick: (Track) -> Unit,
@@ -1407,7 +1463,8 @@ fun LibraryTab(
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(favorites) { track ->
-                        val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                        val normId = LocalMusicStore.normalizeId(track.id)
+                        val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
                         val trackProgress = OfflineManager.activeDownloads[track.id]
                         val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
@@ -1554,13 +1611,15 @@ fun LibraryTab(
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(offlineTracks) { track ->
+                        val normId = LocalMusicStore.normalizeId(track.id)
+                        val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
                         val fileSize = OfflineManager.formatBytes(OfflineManager.getTrackFileSizeBytes(context, track.id))
                         val playCount = store.getPlayCount(track.id)
 
                         TrackItemCard(
                             track = track,
                             isSelected = activeTrack?.id == track.id,
-                            isFavorite = store.isFavorite(track.id),
+                            isFavorite = isFav,
                             isOffline = true,
                             isDownloading = false,
                             playCount = playCount,
@@ -1596,6 +1655,8 @@ fun PlaylistsTab(
     activeTrack: Track?,
     store: LocalMusicStore,
     downloadingIds: List<String>,
+    favoriteIds: Set<String> = emptySet(),
+    offlineTrackIds: Set<String> = emptySet(),
     onSelectPlaylist: (Playlist) -> Unit,
     onBackToPlaylists: () -> Unit,
     onNewPlaylistClick: () -> Unit,
@@ -1733,14 +1794,16 @@ fun PlaylistsTab(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(currentTracks) { track ->
-                        val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                        val normId = LocalMusicStore.normalizeId(track.id)
+                        val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                        val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
                         val trackProgress = OfflineManager.activeDownloads[track.id]
                         val isActivelyDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                         TrackItemCard(
                             track = track,
                             isSelected = activeTrack?.id == track.id,
-                            isFavorite = store.isFavorite(track.id),
+                            isFavorite = isFav,
                             isOffline = isOffline,
                             downloadProgress = trackProgress,
                             isDownloading = isActivelyDownloading,
@@ -1923,7 +1986,11 @@ fun SettingsTab(
     palette: NuclearPalette,
     context: android.content.Context,
     store: LocalMusicStore,
+    favoritesList: List<Track>,
     offlineTracks: List<Track>,
+    favoriteTrackIds: Set<String> = emptySet(),
+    offlineTrackIds: Set<String> = emptySet(),
+    onDownloadFavorites: () -> Unit,
     onClearAllOffline: () -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
@@ -2079,17 +2146,45 @@ fun SettingsTab(
                         }
                         Switch(
                             checked = isAutoDlLiked,
-                            onCheckedChange = {
-                                isAutoDlLiked = it
-                                store.setAutoDownloadLikedEnabled(it)
-                                val msg = if (it) "Auto-download lagu favorit diaktifkan" else "Auto-download lagu favorit dinonaktifkan"
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            onCheckedChange = { enabled ->
+                                isAutoDlLiked = enabled
+                                store.setAutoDownloadLikedEnabled(enabled)
+                                if (enabled) {
+                                    Toast.makeText(context, "Auto-download lagu favorit diaktifkan", Toast.LENGTH_SHORT).show()
+                                    onDownloadFavorites()
+                                } else {
+                                    Toast.makeText(context, "Auto-download lagu favorit dinonaktifkan", Toast.LENGTH_SHORT).show()
+                                }
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = palette.background,
                                 checkedTrackColor = palette.primary
                             )
                         )
+                    }
+
+                    val undownloadedCount = favoritesList.count {
+                        val norm = LocalMusicStore.normalizeId(it.id)
+                        !offlineTrackIds.contains(norm) && !OfflineManager.isTrackDownloaded(context, it.id)
+                    }
+                    if (undownloadedCount > 0) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = onDownloadFavorites,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(vertical = 10.dp, horizontal = 12.dp)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "UNDUH $undownloadedCount LAGU FAVORIT YANG BELUM OFFLINE",
+                                color = palette.background,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -2165,6 +2260,9 @@ fun SettingsTab(
                                 networkPref = NetworkDownloadPreference.ANY_NETWORK
                                 store.setAutoDownloadNetworkPreference(NetworkDownloadPreference.ANY_NETWORK)
                                 Toast.makeText(context, "Mode auto-download: Wi-Fi & Data Seluler", Toast.LENGTH_SHORT).show()
+                                if (isAutoDlLiked && undownloadedCount > 0) {
+                                    onDownloadFavorites()
+                                }
                             }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -2187,6 +2285,9 @@ fun SettingsTab(
                             onClick = {
                                 networkPref = NetworkDownloadPreference.ANY_NETWORK
                                 store.setAutoDownloadNetworkPreference(NetworkDownloadPreference.ANY_NETWORK)
+                                if (isAutoDlLiked && undownloadedCount > 0) {
+                                    onDownloadFavorites()
+                                }
                             },
                             colors = RadioButtonDefaults.colors(selectedColor = palette.primary)
                         )

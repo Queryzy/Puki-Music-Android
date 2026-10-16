@@ -50,6 +50,7 @@ fun ExpandedPlayerModal(
     palette: NuclearPalette,
     store: LocalMusicStore,
     repeatMode: RepeatMode = RepeatMode.OFF,
+    isFavorite: Boolean? = null,
     onToggleRepeat: () -> Unit = {},
     onToggleMixPlay: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -63,7 +64,8 @@ fun ExpandedPlayerModal(
 ) {
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     val durationMs = (track.durationSeconds * 1000).coerceAtLeast(1L)
-    var isFavorite by remember(track.id) { mutableStateOf(store.isFavorite(track.id)) }
+    var localFav by remember(track.id) { mutableStateOf(store.isFavorite(track.id)) }
+    val effectiveFav = isFavorite ?: localFav
     var playerCenterMode by remember { mutableIntStateOf(0) } // 0 = Artwork, 1 = Lirik
     var lyricsResult by remember(track.id) { mutableStateOf<LyricsResult?>(null) }
     var isLoadingLyrics by remember(track.id) { mutableStateOf(false) }
@@ -177,17 +179,17 @@ fun ExpandedPlayerModal(
                             onClick = {
                                 if (onFavoriteToggle != null) {
                                     onFavoriteToggle()
-                                    isFavorite = store.isFavorite(track.id)
+                                    localFav = !effectiveFav
                                 } else {
-                                    isFavorite = store.toggleFavorite(track)
+                                    localFav = store.toggleFavorite(track)
                                     onFavoritesChanged()
                                 }
                             }
                         ) {
                             Icon(
-                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                imageVector = if (effectiveFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = "Fav",
-                                tint = if (isFavorite) palette.primary else palette.textPrimary
+                                tint = if (effectiveFav) palette.primary else palette.textPrimary
                             )
                         }
                     }

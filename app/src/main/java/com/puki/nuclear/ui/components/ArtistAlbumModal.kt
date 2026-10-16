@@ -42,6 +42,8 @@ fun ArtistAlbumModal(
     store: LocalMusicStore,
     downloadingIds: List<String>,
     activeTrack: Track?,
+    favoriteIds: Set<String> = emptySet(),
+    offlineTrackIds: Set<String> = emptySet(),
     onTrackClick: (Track, List<Track>) -> Unit,
     onMixPlayClick: (List<Track>) -> Unit,
     onDownloadTrack: (Track) -> Unit,
@@ -268,14 +270,16 @@ fun ArtistAlbumModal(
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(albumTracks) { track ->
-                                val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                                val normId = LocalMusicStore.normalizeId(track.id)
+                                val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                                val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
                                 val trackProgress = OfflineManager.activeDownloads[track.id]
-                                val isDownloading = trackProgress != null || downloadingIds.contains(track.id)
+                                val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                                 TrackItemCard(
                                     track = track,
                                     isSelected = activeTrack?.id == track.id,
-                                    isFavorite = store.isFavorite(track.id),
+                                    isFavorite = isFav,
                                     isOffline = isOffline,
                                     downloadProgress = trackProgress,
                                     isDownloading = isDownloading,
@@ -416,14 +420,16 @@ fun ArtistAlbumModal(
                         } else {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 items(topTracks) { track ->
-                                    val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
+                                    val normId = LocalMusicStore.normalizeId(track.id)
+                                    val isOffline = offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId) || OfflineManager.isTrackDownloaded(context, track.id)
+                                    val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
                                     val trackProgress = OfflineManager.activeDownloads[track.id]
-                                    val isDownloading = trackProgress != null || downloadingIds.contains(track.id)
+                                    val isDownloading = (trackProgress != null || downloadingIds.contains(track.id)) && !isOffline
 
                                     TrackItemCard(
                                         track = track,
                                         isSelected = activeTrack?.id == track.id,
-                                        isFavorite = store.isFavorite(track.id),
+                                        isFavorite = isFav,
                                         isOffline = isOffline,
                                         downloadProgress = trackProgress,
                                         isDownloading = isDownloading,

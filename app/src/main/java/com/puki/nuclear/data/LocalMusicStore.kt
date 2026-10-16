@@ -20,14 +20,6 @@ class LocalMusicStore(private val context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("puki_music_store", Context.MODE_PRIVATE)
 
-    private fun normalizeId(id: String): String {
-        return if (id.contains("v=")) {
-            id.substringAfter("v=").substringBefore("&")
-        } else {
-            id.trim()
-        }
-    }
-
     // ── Play History & Personal Mix ────────────────────────────────────────
 
     fun recordPlay(track: Track) {
@@ -459,11 +451,11 @@ class LocalMusicStore(private val context: Context) {
     }
 
     fun getAutoDownloadNetworkPreference(): NetworkDownloadPreference {
-        val raw = prefs.getString(KEY_AUTO_DOWNLOAD_NETWORK, NetworkDownloadPreference.WIFI_ONLY.name)
+        val raw = prefs.getString(KEY_AUTO_DOWNLOAD_NETWORK, NetworkDownloadPreference.ANY_NETWORK.name)
         return try {
-            NetworkDownloadPreference.valueOf(raw ?: NetworkDownloadPreference.WIFI_ONLY.name)
+            NetworkDownloadPreference.valueOf(raw ?: NetworkDownloadPreference.ANY_NETWORK.name)
         } catch (_: Exception) {
-            NetworkDownloadPreference.WIFI_ONLY
+            NetworkDownloadPreference.ANY_NETWORK
         }
     }
 
@@ -482,6 +474,13 @@ class LocalMusicStore(private val context: Context) {
     }
 
     companion object {
+        fun normalizeId(id: String): String {
+            return if (id.contains("v=")) {
+                id.substringAfter("v=").substringBefore("&")
+            } else {
+                id.trim()
+            }
+        }
         private const val KEY_FAVORITES = "fav_tracks"
         private const val KEY_PLAYLISTS = "playlists_meta"
         private const val KEY_PL_TRACKS = "pl_tracks"
