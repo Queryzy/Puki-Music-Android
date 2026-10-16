@@ -2287,12 +2287,11 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.26: Fix DNS Drop & Auto-Retry Resiliency (Bypass UnknownHostException):\n" +
-                               "  - DNS Fallback Resolver: menyematkan IP Anycast resmi Google cadangan saat DNS seluler operator (Telkomsel/Indosat) mengalami timeout.\n" +
-                               "  - Exponential Backoff Auto-Retry (3x) di StreamResolver sehingga koneksi tersendat tidak langsung mematikan lagu atau memunculkan kotak merah.\n" +
-                               "  - Auto-Advance Skip: otomatis melompat ke lagu berikutnya di antrean jika trek bermasalah.\n" +
-                               "• v1.0.25: Active Pre-Cache Engine Ala Spotify & YouTube Music (CacheWriter 1:1).\n" +
-                               "• v1.0.24: Fix Audio Freeze Saat Layar Mati (Buffer Lock & WifiLock Guard).",
+                        text = "• v1.0.27: Fix Notif Click Routing (Set SessionActivity PendingIntent):\n" +
+                               "  - Mengunci PendingIntent MediaSession langsung ke Puki Music MainActivity.\n" +
+                               "  - Menghilangkan bug saat klik notifikasi / lock screen player malah membuka YouTube Music bawaan HP.\n" +
+                               "• v1.0.26: Fix DNS Drop & Auto-Retry Resiliency (Bypass UnknownHostException).\n" +
+                               "• v1.0.25: Active Pre-Cache Engine Ala Spotify & YouTube Music (CacheWriter 1:1).",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

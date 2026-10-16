@@ -3,6 +3,7 @@ package com.puki.nuclear.core
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
@@ -25,6 +26,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.puki.nuclear.ui.MainActivity
 
 class PlaybackService : MediaSessionService() {
 
@@ -214,7 +216,21 @@ class PlaybackService : MediaSessionService() {
 
         PlaybackStateManager.setPlayerInstance(forwardingPlayer)
 
-        mediaSession = MediaSession.Builder(this, forwardingPlayer).build()
+        val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val sessionActivityPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            sessionActivityIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        mediaSession = MediaSession.Builder(this, forwardingPlayer)
+            .setSessionActivity(sessionActivityPendingIntent)
+            .build()
 
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
             .setChannelId(PLAYBACK_CHANNEL_ID)
