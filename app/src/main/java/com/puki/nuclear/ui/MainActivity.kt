@@ -2287,11 +2287,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.28: Fix Audio Freeze & Multitasking Pause:\n" +
-                               "  - Eliminasi duplicate CacheWriter span collision: ExoPlayer mengontrol penuh caching disk 180 detik tanpa deadlock atau TCP drop dari YouTube.\n" +
-                               "  - Bypass AudioFocus interruption: notifikasi background (WA/Telegram) dan multitasking tidak akan me-pause musik secara sepihak.\n" +
-                               "• v1.0.27: Fix Notif Click Routing (`setSessionActivity` PendingIntent).\n" +
-                               "• v1.0.26: Fix DNS Drop & Auto-Retry Resiliency (Bypass UnknownHostException).",
+                        text = "• v1.0.29: Standard 1:1 Spotify/YT Music Architecture:\n" +
+                               "  - Continuous Lock Session: CPU & WifiLock ditahan tanpa jeda saat transisi antar lagu (STATE_ENDED) dan background resolving.\n" +
+                               "  - Gapless Pre-Resolving: Stream lagu berikutnya di-resolve 20 detik sebelum lagu aktif selesai (transisi instan 0ms tanpa loading).\n" +
+                               "  - Native AudioFocus & Ducking: volume mengecil saat notifikasi (WA/Telegram) dan pause/resume otomatis saat memutar video sosmed.\n" +
+                               "• v1.0.28: Fix Audio Freeze & Eliminasi CacheWriter Contention.\n" +
+                               "• v1.0.27: Fix Notif Click Routing (`setSessionActivity` PendingIntent).",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

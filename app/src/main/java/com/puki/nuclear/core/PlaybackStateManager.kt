@@ -68,6 +68,7 @@ object PlaybackStateManager {
 
     private var resolveJob: Job? = null
     private var progressJob: Job? = null
+    private val preResolvedUrls = java.util.concurrent.ConcurrentHashMap<String, StreamResolver.StreamResolution>()
 
     init {
         startProgressTracker()
@@ -86,11 +87,46 @@ object PlaybackStateManager {
                 try {
                     val p = player
                     if (p != null && p.isPlaying) {
-                        _playbackPositionMs.value = p.currentPosition.coerceAtLeast(0L)
-                        _playbackDurationMs.value = p.duration.coerceAtLeast(0L)
+                        val curPos = p.currentPosition.coerceAtLeast(0L)
+                        val dur = p.duration.coerceAtLeast(0L)
+                        _playbackPositionMs.value = curPos
+                        _playbackDurationMs.value = dur
+
+                        // Pre-resolve next track in queue 20s before current track finishes (1:1 Spotify & YT Music Gapless)
+                        if (dur > 20_000L && curPos >= dur - 20_000L) {
+                            preResolveNextTrack()
+                        }
                     }
                 } catch (_: Exception) {}
                 delay(500)
+            }
+        }
+    }
+
+    private fun preResolveNextTrack() {
+        val queue = _currentQueue.value
+        val track = _activeTrack.value ?: return
+        if (queue.size <= 1) return
+
+        val curIdx = queue.indexOfFirst { it.id == track.id }
+        val nextTrack = if (_isShuffle.value) {
+            queue.filter { it.id != track.id }.randomOrNull()
+        } else if (curIdx in 0 until queue.size - 1) {
+            queue[curIdx + 1]
+        } else if (_repeatMode.value == RepeatMode.ALL) {
+            queue.firstOrNull()
+        } else null
+
+        if (nextTrack != null && !preResolvedUrls.containsKey(nextTrack.id)) {
+            val ctx = appContext
+            val isOffline = ctx != null && OfflineManager.getLocalAudioFile(ctx, nextTrack.id)?.exists() == true
+            if (!isOffline) {
+                serviceScope.launch(Dispatchers.IO) {
+                    StreamResolver.resolveAudioStreamDetailed(nextTrack.id).onSuccess { res ->
+                        preResolvedUrls[nextTrack.id] = res
+                        Log.d(TAG, "Gapless pre-resolved next track: ${nextTrack.title}")
+                    }
+                }
             }
         }
     }
@@ -172,6 +208,47 @@ object PlaybackStateManager {
                     p.play()
                     _isPlaying.value = true
                     _isResolvingStream.value = false
+                }
+            }
+            return
+        }
+
+        // Instant Gapless Transition: if stream was already pre-resolved in RAM, play immediately (0ms latency)!
+        val preResolved = preResolvedUrls.remove(track.id)
+        if (preResolved != null) {
+            _isResolvingStream.value = false
+            resolveJob = serviceScope.launch(Dispatchers.IO) {
+                val views = if (preResolved.viewCount > 0) preResolved.viewCount else track.viewCount
+                val likes = if (preResolved.likeCount > 0) preResolved.likeCount else track.likeCount
+                val updatedTrack = track.copy(
+                    streamUrl = preResolved.streamUrl,
+                    viewCount = views,
+                    likeCount = likes
+                )
+                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
+                withContext(Dispatchers.Main) {
+                    val p = player
+                    if (p != null) {
+                        val metadata = MediaMetadata.Builder()
+                            .setTitle(updatedTrack.title)
+                            .setArtist(updatedTrack.artist)
+                            .setArtworkUri(if (updatedTrack.thumbnailUrl.isNotBlank()) Uri.parse(updatedTrack.thumbnailUrl) else null)
+                            .apply {
+                                if (artworkBytes != null && artworkBytes.isNotEmpty()) {
+                                    setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                }
+                            }
+                            .build()
+                        val mediaItem = MediaItem.Builder()
+                            .setMediaId(updatedTrack.id)
+                            .setUri(preResolved.streamUrl)
+                            .setMediaMetadata(metadata)
+                            .build()
+                        p.setMediaItem(mediaItem)
+                        p.prepare()
+                        p.play()
+                        _isPlaying.value = true
+                    }
                 }
             }
             return

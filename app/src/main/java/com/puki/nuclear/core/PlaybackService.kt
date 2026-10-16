@@ -27,12 +27,19 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.puki.nuclear.ui.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.Main.immediate + serviceJob)
 
     companion object {
         const val PLAYBACK_CHANNEL_ID = "puki_playback_channel"
@@ -120,16 +127,20 @@ class PlaybackService : MediaSessionService() {
             .setRenderersFactory(renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttributes, false)
-            .setHandleAudioBecomingNoisy(false)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-        // Dynamic lock controller: keep CPU & Wi-Fi active during both PLAYING and BUFFERING states
+        // 1:1 Spotify & YouTube Music lock controller:
+        // Hold CPU WakeLock & WifiLock continuously across active playback, buffering, track transitions,
+        // and background stream resolutions. Locks are ONLY released when user explicitly pauses or queue is empty.
         fun updateLocks() {
-            val shouldLock = basePlayer.playWhenReady &&
-                    basePlayer.playbackState != Player.STATE_IDLE &&
-                    basePlayer.playbackState != Player.STATE_ENDED
+            val isResolving = PlaybackStateManager.isResolvingStream.value
+            val isSessionActive = PlaybackStateManager.currentQueue.value.isNotEmpty()
+            val shouldLock = (basePlayer.playWhenReady && basePlayer.playbackState != Player.STATE_IDLE) ||
+                    (isSessionActive && isResolving) ||
+                    (isSessionActive && basePlayer.playbackState == Player.STATE_ENDED)
 
             if (shouldLock) {
                 try {
@@ -165,6 +176,18 @@ class PlaybackService : MediaSessionService() {
                 updateLocks()
             }
         })
+
+        // Observe background resolving state and queue changes to hold locks during track switches
+        serviceScope.launch {
+            PlaybackStateManager.isResolvingStream.collect {
+                updateLocks()
+            }
+        }
+        serviceScope.launch {
+            PlaybackStateManager.currentQueue.collect {
+                updateLocks()
+            }
+        }
 
         // ForwardingPlayer to guarantee Next / Previous controls in Android Media Notification
         val forwardingPlayer = object : ForwardingPlayer(basePlayer) {
@@ -257,6 +280,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        serviceJob.cancel()
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
