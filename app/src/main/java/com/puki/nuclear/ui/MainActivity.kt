@@ -840,6 +840,10 @@ fun NuclearMainScreen(
                 playlistToAddTo = activeTrack
             },
             isFavorite = activeTrack?.let { favoriteTrackIds.contains(LocalMusicStore.normalizeId(it.id)) } ?: false,
+            playbackQueue = currentQueue,
+            onQueueTrackSelect = { selectedTrack ->
+                playTrack(selectedTrack, currentQueue)
+            },
             onFavoritesChanged = {
                 favoritesList = store.getFavorites()
             },
@@ -1090,17 +1094,29 @@ fun DashboardTab(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(42.dp)
+                                            .size(52.dp)
                                             .clip(CircleShape)
-                                            .background(palette.primary.copy(alpha = 0.2f)),
+                                            .background(palette.surface)
+                                            .border(1.5.dp, palette.primary.copy(alpha = 0.5f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = artist.name.take(1).uppercase(),
-                                            color = palette.primary,
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        if (artist.avatarUrl.isNotBlank()) {
+                                            AsyncImage(
+                                                model = artist.avatarUrl,
+                                                contentDescription = artist.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clip(CircleShape)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = artist.name.take(1).uppercase(),
+                                                color = palette.primary,
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(

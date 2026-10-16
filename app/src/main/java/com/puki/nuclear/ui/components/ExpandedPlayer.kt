@@ -1,5 +1,6 @@
 package com.puki.nuclear.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,6 +52,8 @@ fun ExpandedPlayerModal(
     store: LocalMusicStore,
     repeatMode: RepeatMode = RepeatMode.OFF,
     isFavorite: Boolean? = null,
+    playbackQueue: List<Track> = emptyList(),
+    onQueueTrackSelect: ((Track) -> Unit)? = null,
     onToggleRepeat: () -> Unit = {},
     onToggleMixPlay: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -66,7 +69,7 @@ fun ExpandedPlayerModal(
     val durationMs = (track.durationSeconds * 1000).coerceAtLeast(1L)
     var localFav by remember(track.id) { mutableStateOf(store.isFavorite(track.id)) }
     val effectiveFav = isFavorite ?: localFav
-    var playerCenterMode by remember { mutableIntStateOf(0) } // 0 = Artwork, 1 = Lirik
+    var playerCenterMode by remember { mutableIntStateOf(0) } // 0 = Artwork, 1 = Lirik, 2 = Antrean
     var lyricsResult by remember(track.id) { mutableStateOf<LyricsResult?>(null) }
     var isLoadingLyrics by remember(track.id) { mutableStateOf(false) }
     var lyricsError by remember(track.id) { mutableStateOf<String?>(null) }
@@ -195,7 +198,7 @@ fun ExpandedPlayerModal(
                     }
                 }
 
-                // Mode Switcher: [ ARTWORK ] vs [ LIRIK SYNC ]
+                // Mode Switcher: [ ARTWORK ] vs [ LIRIK SYNC ] vs [ ANTREAN ]
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -208,7 +211,7 @@ fun ExpandedPlayerModal(
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (playerCenterMode == 0) palette.primary else palette.surfaceVariant)
                             .clickable { playerCenterMode = 0 }
-                            .padding(horizontal = 14.dp, vertical = 5.dp)
+                            .padding(horizontal = 12.dp, vertical = 5.dp)
                     ) {
                         Text(
                             text = "🎵 ARTWORK",
@@ -223,11 +226,26 @@ fun ExpandedPlayerModal(
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (playerCenterMode == 1) palette.primary else palette.surfaceVariant)
                             .clickable { playerCenterMode = 1 }
-                            .padding(horizontal = 14.dp, vertical = 5.dp)
+                            .padding(horizontal = 12.dp, vertical = 5.dp)
                     ) {
                         Text(
                             text = "📜 LIRIK SYNC",
                             color = if (playerCenterMode == 1) palette.background else palette.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (playerCenterMode == 2) palette.primary else palette.surfaceVariant)
+                            .clickable { playerCenterMode = 2 }
+                            .padding(horizontal = 12.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = if (playbackQueue.isNotEmpty()) "📑 ANTREAN (${playbackQueue.size})" else "📑 ANTREAN",
+                            color = if (playerCenterMode == 2) palette.background else palette.textSecondary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -378,7 +396,7 @@ fun ExpandedPlayerModal(
                             }
                         }
                     }
-                } else {
+                } else if (playerCenterMode == 1) {
                     // Synced Karaoke Lyrics View
                     Box(
                         modifier = Modifier
@@ -473,6 +491,168 @@ fun ExpandedPlayerModal(
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                 ) {
                                     Text("COBA LAGI", color = palette.background, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Current Playback Queue View (Album / Playlist / Mix / Liked Tracks)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(340.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(palette.surfaceVariant.copy(alpha = 0.5f))
+                            .border(1.dp, palette.border, RoundedCornerShape(16.dp))
+                            .padding(12.dp)
+                    ) {
+                        if (playbackQueue.isEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.QueueMusic,
+                                    contentDescription = null,
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Tidak ada antrean lagu yang aktif",
+                                    color = palette.textSecondary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        } else {
+                            val normCurrentId = LocalMusicStore.normalizeId(track.id)
+                            val currentIdx = playbackQueue.indexOfFirst {
+                                LocalMusicStore.normalizeId(it.id) == normCurrentId
+                            }
+                            val queueListState = rememberLazyListState()
+
+                            LaunchedEffect(track.id) {
+                                if (currentIdx >= 0) {
+                                    queueListState.animateScrollToItem((currentIdx - 1).coerceAtLeast(0))
+                                }
+                            }
+
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "ANTREAN PUTAR (${playbackQueue.size})",
+                                        color = palette.primary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    if (currentIdx >= 0) {
+                                        Text(
+                                            text = "Lagu #${currentIdx + 1} dari ${playbackQueue.size}",
+                                            color = palette.textSecondary,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                LazyColumn(
+                                    state = queueListState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    itemsIndexed(playbackQueue) { idx, qTrack ->
+                                        val isCurrent = LocalMusicStore.normalizeId(qTrack.id) == normCurrentId
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { onQueueTrackSelect?.invoke(qTrack) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (isCurrent) palette.primary.copy(alpha = 0.15f) else palette.surface
+                                            ),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isCurrent) palette.primary else palette.border.copy(alpha = 0.5f)
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Text(
+                                                    text = "%02d".format(idx + 1),
+                                                    color = if (isCurrent) palette.primary else palette.textSecondary,
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                                                )
+
+                                                AsyncImage(
+                                                    model = qTrack.thumbnailUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                )
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = qTrack.title,
+                                                        color = if (isCurrent) palette.primary else palette.textPrimary,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = qTrack.artist,
+                                                        color = palette.textSecondary,
+                                                        fontSize = 10.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+
+                                                if (isCurrent) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(palette.primary)
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "SEDANG DIPUTAR",
+                                                            color = palette.background,
+                                                            fontSize = 8.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                } else {
+                                                    val min = qTrack.durationSeconds / 60
+                                                    val sec = qTrack.durationSeconds % 60
+                                                    Text(
+                                                        text = "%d:%02d".format(min, sec),
+                                                        color = palette.textSecondary,
+                                                        fontSize = 10.sp,
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

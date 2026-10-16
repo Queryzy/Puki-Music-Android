@@ -19,7 +19,8 @@ data class ArtistAffinity(
     val name: String,
     val playCount: Int,
     val favoriteCount: Int,
-    val score: Int
+    val score: Int,
+    val avatarUrl: String = ""
 )
 
 data class BehaviorFeedSection(
@@ -155,6 +156,7 @@ class LocalMusicStore(private val context: Context) {
         val playArray = JSONArray(playHistoryJson)
         val artistPlays = mutableMapOf<String, Int>()
         val artistLastPlayed = mutableMapOf<String, Long>()
+        val artistThumbs = mutableMapOf<String, String>()
 
         for (i in 0 until playArray.length()) {
             val obj = playArray.getJSONObject(i)
@@ -162,10 +164,14 @@ class LocalMusicStore(private val context: Context) {
             if (artist.isNotBlank() && !artist.equals("Unknown", ignoreCase = true)) {
                 val plays = obj.optInt("playCount", 1)
                 val last = obj.optLong("lastPlayed", 0L)
+                val thumb = obj.optString("thumbnailUrl", "")
                 val key = artist
                 artistPlays[key] = (artistPlays[key] ?: 0) + plays
                 if (last > (artistLastPlayed[key] ?: 0L)) {
                     artistLastPlayed[key] = last
+                }
+                if (thumb.isNotBlank() && !artistThumbs.containsKey(key)) {
+                    artistThumbs[key] = thumb
                 }
             }
         }
@@ -175,7 +181,11 @@ class LocalMusicStore(private val context: Context) {
         for (f in favs) {
             val artist = f.artist.trim()
             if (artist.isNotBlank() && !artist.equals("Unknown", ignoreCase = true)) {
-                artistFavs[artist] = (artistFavs[artist] ?: 0) + 1
+                val key = artist
+                artistFavs[key] = (artistFavs[key] ?: 0) + 1
+                if (f.thumbnailUrl.isNotBlank() && !artistThumbs.containsKey(key)) {
+                    artistThumbs[key] = f.thumbnailUrl
+                }
             }
         }
 
@@ -184,7 +194,11 @@ class LocalMusicStore(private val context: Context) {
         for (o in offline) {
             val artist = o.artist.trim()
             if (artist.isNotBlank() && !artist.equals("Unknown", ignoreCase = true)) {
-                artistOffline[artist] = (artistOffline[artist] ?: 0) + 1
+                val key = artist
+                artistOffline[key] = (artistOffline[key] ?: 0) + 1
+                if (o.thumbnailUrl.isNotBlank() && !artistThumbs.containsKey(key)) {
+                    artistThumbs[key] = o.thumbnailUrl
+                }
             }
         }
 
@@ -208,7 +222,8 @@ class LocalMusicStore(private val context: Context) {
                         name = a,
                         playCount = plays,
                         favoriteCount = favCount,
-                        score = score
+                        score = score,
+                        avatarUrl = artistThumbs[a] ?: ""
                     )
                 )
             }
