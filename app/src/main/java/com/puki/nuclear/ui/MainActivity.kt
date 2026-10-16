@@ -2287,12 +2287,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.29: Standard 1:1 Spotify/YT Music Architecture:\n" +
-                               "  - Continuous Lock Session: CPU & WifiLock ditahan tanpa jeda saat transisi antar lagu (STATE_ENDED) dan background resolving.\n" +
-                               "  - Gapless Pre-Resolving: Stream lagu berikutnya di-resolve 20 detik sebelum lagu aktif selesai (transisi instan 0ms tanpa loading).\n" +
-                               "  - Native AudioFocus & Ducking: volume mengecil saat notifikasi (WA/Telegram) dan pause/resume otomatis saat memutar video sosmed.\n" +
-                               "• v1.0.28: Fix Audio Freeze & Eliminasi CacheWriter Contention.\n" +
-                               "• v1.0.27: Fix Notif Click Routing (`setSessionActivity` PendingIntent).",
+                        text = "• v1.0.30 (Official Production Release):\n" +
+                               "  - Migrasi ke Production RSA 4096-bit Keystore (V1, V2, V3, V4 signed).\n" +
+                               "  - Package name resmi: `com.puki.nuclear` (menghilangkan warning 'Install anyway' & 'High-risk debug certificate').\n" +
+                               "  - 1:1 Spotify/YT Music: Continuous Lock Session, Gapless Pre-Resolving, Native AudioFocus Ducking & Auto-Resume.\n" +
+                               "• v1.0.29: Continuous Lock Session & Gapless Pre-Resolving.\n" +
+                               "• v1.0.28: Fix Audio Freeze & Eliminasi CacheWriter Contention.",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
