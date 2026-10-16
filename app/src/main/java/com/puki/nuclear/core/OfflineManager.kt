@@ -316,6 +316,11 @@ object OfflineManager {
                 }
             }
 
+            if (partFile.length() < 64 * 1024L) {
+                partFile.delete()
+                throw IllegalStateException("Berkas unduhan tidak lengkap (kurang dari 64 KB)")
+            }
+
             if (targetFile.exists()) targetFile.delete()
             if (!partFile.renameTo(targetFile)) {
                 partFile.copyTo(targetFile, overwrite = true)

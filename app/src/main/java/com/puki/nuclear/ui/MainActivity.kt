@@ -85,6 +85,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        PlaybackStateManager.initContext(this)
+        try {
+            val serviceIntent = Intent(this, PlaybackService::class.java)
+            ContextCompat.startForegroundService(this, serviceIntent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start PlaybackService: ${e.message}")
+        }
+
         val sessionToken = SessionToken(
             this,
             ComponentName(this, PlaybackService::class.java)
@@ -135,15 +143,13 @@ fun NuclearMainScreen(
     onThemeChanged: (NuclearThemeId) -> Unit
 ) {
     var currentTab by remember { mutableIntStateOf(0) }
-    var activeTrack by remember { mutableStateOf<Track?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var isResolvingStream by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    // Queue, Repeat & Playback State
+    val activeTrack by PlaybackStateManager.activeTrack.collectAsState()
+    val isPlaying by PlaybackStateManager.isPlaying.collectAsState()
+    val isResolvingStream by PlaybackStateManager.isResolvingStream.collectAsState()
+    val errorMessage by PlaybackStateManager.errorMessage.collectAsState()
+    val repeatMode by PlaybackStateManager.repeatMode.collectAsState()
+    val currentQueue by PlaybackStateManager.currentQueue.collectAsState()
     var isMixPlayActive by remember { mutableStateOf(false) }
-    var repeatMode by remember { mutableStateOf(RepeatMode.OFF) }
-    var currentQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
 
     // Dialog & Modal states
     var showThemeDialog by remember { mutableStateOf(false) }
@@ -284,128 +290,26 @@ fun NuclearMainScreen(
         }
     }
 
-    // Playback logic: handles both local offline and remote CDN streaming
+    // Playback logic: delegates to standalone PlaybackStateManager in Service
     fun playTrack(track: Track, newQueue: List<Track>? = null) {
-        if (isResolvingStream) return
-        activeTrack = track
-        errorMessage = null
-        if (newQueue != null) {
-            currentQueue = newQueue
-        }
-        PlaybackStateManager.activeTrack = track
-        PlaybackStateManager.currentQueue = currentQueue
-        store.recordPlay(track)
-
-        val localFile = OfflineManager.getLocalAudioFile(context, track.id)
-        if (localFile != null && localFile.exists()) {
-            // 100% Offline Playback: Play instantly from local storage, zero latency
-            scope.launch {
-                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
-                mediaController?.let { player ->
-                    val metadata = MediaMetadata.Builder()
-                        .setTitle(track.title)
-                        .setArtist(track.artist)
-                        .setArtworkUri(if (track.thumbnailUrl.isNotBlank()) Uri.parse(track.thumbnailUrl) else null)
-                        .apply {
-                            if (artworkBytes != null && artworkBytes.isNotEmpty()) {
-                                setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                            }
-                        }
-                        .build()
-                    val mediaItem = MediaItem.Builder()
-                        .setMediaId(track.id)
-                        .setUri(Uri.fromFile(localFile))
-                        .setMediaMetadata(metadata)
-                        .build()
-                    player.setMediaItem(mediaItem)
-                    player.prepare()
-                    player.play()
-                }
-            }
-            return
-        }
-
-        // Online Stream Playback
-        isResolvingStream = true
-        scope.launch {
-            val streamRes = StreamResolver.resolveAudioStreamDetailed(track.id)
-            streamRes.onSuccess { detailed ->
-                val updatedTrack = track.copy(
-                    streamUrl = detailed.streamUrl,
-                    viewCount = detailed.viewCount.takeIf { it > 0 } ?: track.viewCount,
-                    likeCount = detailed.likeCount.takeIf { it > 0 } ?: track.likeCount
-                )
-                activeTrack = updatedTrack
-                PlaybackStateManager.activeTrack = updatedTrack
-
-                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
-
-                mediaController?.let { player ->
-                    val metadata = MediaMetadata.Builder()
-                        .setTitle(updatedTrack.title)
-                        .setArtist(updatedTrack.artist)
-                        .setArtworkUri(if (updatedTrack.thumbnailUrl.isNotBlank()) Uri.parse(updatedTrack.thumbnailUrl) else null)
-                        .apply {
-                            if (artworkBytes != null && artworkBytes.isNotEmpty()) {
-                                setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                            }
-                        }
-                        .build()
-                    val mediaItem = MediaItem.Builder()
-                        .setMediaId(updatedTrack.id)
-                        .setUri(detailed.streamUrl)
-                        .setMediaMetadata(metadata)
-                        .build()
-                    player.setMediaItem(mediaItem)
-                    player.prepare()
-                    player.play()
-                }
-            }.onFailure {
-                errorMessage = "Gagal resolve audio CDN: ${it.localizedMessage}"
-            }
-            isResolvingStream = false
-        }
+        PlaybackStateManager.playTrack(context, track, newQueue)
     }
 
     fun startMixPlay(tracks: List<Track>) {
         if (tracks.isEmpty()) return
         val shuffled = tracks.shuffled()
         isMixPlayActive = true
-        currentQueue = shuffled
-        playTrack(shuffled.first(), shuffled)
+        PlaybackStateManager.playTrack(context, shuffled.first(), shuffled)
         Toast.makeText(context, "Mix Play aktif: ${shuffled.size} lagu diacak", Toast.LENGTH_SHORT).show()
     }
 
     fun playNextTrack() {
-        if (currentQueue.isEmpty()) return
-        val currentIdx = currentQueue.indexOfFirst { it.id == activeTrack?.id }
-        val nextIdx = if (currentIdx in 0 until currentQueue.size - 1) currentIdx + 1 else 0
-        playTrack(currentQueue[nextIdx], currentQueue)
+        PlaybackStateManager.playNext()
     }
 
     fun playPreviousTrack() {
-        if (currentQueue.isEmpty()) {
-            mediaController?.seekTo(0)
-            return
-        }
-        val pos = mediaController?.currentPosition ?: 0L
-        if (pos > 3000L) {
-            mediaController?.seekTo(0)
-            return
-        }
-        val currentIdx = currentQueue.indexOfFirst { it.id == activeTrack?.id }
-        val prevIdx = if (currentIdx > 0) currentIdx - 1 else currentQueue.size - 1
- playTrack(currentQueue[prevIdx], currentQueue)
- }
-
- LaunchedEffect(Unit) {
- PlaybackStateManager.onPlayNext = { playNextTrack() }
- PlaybackStateManager.onPlayPrevious = { playPreviousTrack() }
- }
- LaunchedEffect(activeTrack, currentQueue) {
- PlaybackStateManager.activeTrack = activeTrack
- PlaybackStateManager.currentQueue = currentQueue
- }
+        PlaybackStateManager.playPrevious()
+    }
 
     fun toggleOfflineDownload(track: Track) {
         val isOffline = OfflineManager.isTrackDownloaded(context, track.id)
@@ -472,107 +376,6 @@ fun NuclearMainScreen(
         downloadPlaylist(undownloaded, "Lagu Disukai")
     }
 
-    // Continuous playback & repeat queue listener
-    val currentQueueState by rememberUpdatedState(currentQueue)
-    val activeTrackState by rememberUpdatedState(activeTrack)
-    val repeatModeState by rememberUpdatedState(repeatMode)
-    val isMixPlayState by rememberUpdatedState(isMixPlayActive)
-
-    DisposableEffect(mediaController) {
-        val player = mediaController ?: return@DisposableEffect onDispose {}
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                Log.w("PukiPlayer", "ExoPlayer error [${error.errorCodeName} / ${error.errorCode}]: ${error.message}")
-                val curTrack = activeTrackState ?: return
-                val currentPos = player.currentPosition.coerceAtLeast(0L)
-
-                // Auto-recover from transient drops, network timeouts, or CDN token expiration
-                scope.launch {
-                    delay(800)
-                    val localFile = OfflineManager.getLocalAudioFile(context, curTrack.id)
-                    if (localFile != null && localFile.exists()) {
-                        player.prepare()
-                        if (currentPos > 0) player.seekTo(currentPos)
-                        player.play()
-                    } else {
-                        val streamRes = StreamResolver.resolveAudioStreamDetailed(curTrack.id)
-                        streamRes.onSuccess { detailed ->
-                            val metadata = MediaMetadata.Builder()
-                                .setTitle(curTrack.title)
-                                .setArtist(curTrack.artist)
-                                .setArtworkUri(if (curTrack.thumbnailUrl.isNotBlank()) Uri.parse(curTrack.thumbnailUrl) else null)
-                                .build()
-                            val mediaItem = MediaItem.Builder()
-                                .setMediaId(curTrack.id)
-                                .setUri(detailed.streamUrl)
-                                .setMediaMetadata(metadata)
-                                .build()
-                            player.setMediaItem(mediaItem)
-                            player.prepare()
-                            if (currentPos > 0) player.seekTo(currentPos)
-                            player.play()
-                        }.onFailure {
-                            player.prepare()
-                            if (currentPos > 0) player.seekTo(currentPos)
-                            player.play()
-                        }
-                    }
-                }
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    val queue = currentQueueState
-                    val track = activeTrackState
-                    val repMode = repeatModeState
-                    val isMix = isMixPlayState
-
-                    when (repMode) {
-                        RepeatMode.ONE -> {
-                            track?.let { t ->
-                                if (player.currentMediaItem != null) {
-                                    player.seekTo(0)
-                                    player.play()
-                                } else {
-                                    playTrack(t, queue)
-                                }
-                            }
-                        }
-                        RepeatMode.ALL -> {
-                            if (queue.isNotEmpty()) {
-                                val currentIdx = queue.indexOfFirst { it.id == track?.id }
-                                val nextIdx = if (currentIdx in 0 until queue.size - 1) currentIdx + 1 else 0
-                                playTrack(queue[nextIdx], queue)
-                            }
-                        }
-                        RepeatMode.OFF -> {
-                            if (queue.isNotEmpty()) {
-                                val currentIdx = queue.indexOfFirst { it.id == track?.id }
-                                if (currentIdx in 0 until queue.size - 1) {
-                                    playTrack(queue[currentIdx + 1], queue)
-                                } else if (isMix) {
-                                    val nextTrack = queue.randomOrNull() ?: queue.first()
-                                    playTrack(nextTrack, queue)
-                                } else {
-                                    isPlaying = false
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        player.addListener(listener)
-        isPlaying = player.isPlaying
-        onDispose {
-            player.removeListener(listener)
-        }
-    }
-
     Scaffold(
         containerColor = palette.background,
         topBar = {
@@ -635,7 +438,7 @@ fun NuclearMainScreen(
                             fontSize = 11.sp,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { errorMessage = null }) {
+                        TextButton(onClick = { PlaybackStateManager.clearError() }) {
                             Text("Tutup", color = palette.textPrimary, fontSize = 11.sp)
                         }
                     }
@@ -651,19 +454,8 @@ fun NuclearMainScreen(
                         isResolving = isResolvingStream,
                         palette = palette,
                         onClick = { showExpandedPlayer = true },
-                        onPlayPauseToggle = {
-                            mediaController?.let {
-                                if (it.isPlaying) {
-                                    it.pause()
-                                } else {
-                                    if (it.playbackState == Player.STATE_IDLE) {
-                                        it.prepare()
-                                    }
-                                    it.play()
-                                }
-                            }
-                        },
-                        onNextClick = { playNextTrack() }
+                        onPlayPauseToggle = { PlaybackStateManager.togglePlayPause() },
+                        onNextClick = { PlaybackStateManager.playNext() }
                     )
                 }
 
@@ -934,12 +726,13 @@ fun NuclearMainScreen(
             store = store,
             repeatMode = repeatMode,
             onToggleRepeat = {
-                repeatMode = when (repeatMode) {
+                val nextMode = when (repeatMode) {
                     RepeatMode.OFF -> RepeatMode.ALL
                     RepeatMode.ALL -> RepeatMode.ONE
                     RepeatMode.ONE -> RepeatMode.OFF
                 }
-                val label = when (repeatMode) {
+                PlaybackStateManager.setRepeatMode(nextMode)
+                val label = when (nextMode) {
                     RepeatMode.OFF -> "Repeat Dinonaktifkan"
                     RepeatMode.ALL -> "Repeat Semua Lagu (Playlist/Album)"
                     RepeatMode.ONE -> "Repeat 1 Lagu Ini Saja"
@@ -2473,16 +2266,13 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• Fix Player Stuck & Audio Freeze:\n" +
-                               "  - Eliminasi AudioTrack float buffer stall pada chipset Huawei / Android.\n" +
-                               "  - Penambahan dedicated CPU WakeLock saat audio memutar agar Doze / PowerGenie tidak membekukan playback saat layar terkunci.\n" +
-                               "  - Perbaikan downloader offline ke pure sequential streaming untuk mencegah audio korup / gap nol byte.\n" +
-                               "  - Tombol Play otomatis re-prepare player jika sempat idle.\n" +
-                               "• Fix Media Notification Shade & Lockscreen:\n" +
-                               "  - Sampul lagu (cover art) tampil penuh via direct bitmap bytes embedding.\n" +
-                               "  - Tombol Previous, Play/Pause, dan Next lengkap dan terhubung ke antrean lagu.\n" +
-                               "• Tab Antrean Putar (Queue Tracklist) di Expanded Player.\n" +
-                               "• Foto / Artwork Musisi Asli pada bar Artis Paling Sering Didengar.",
+                        text = "• v1.0.22: Decoupled Standalone Playback Engine (Spotify/YT Music Architecture):\n" +
+                               "  - Playback Service berjalan mandiri sebagai Started Foreground Service (START_STICKY), tidak lagi menumpang siklus hidup UI.\n" +
+                               "  - Logika antrean (Next/Previous), auto-advance saat lagu habis, dan resolver stream YouTube berjalan di Process Scope permanen (bebas freeze saat layar mati di MIUI/POCO/Android).\n" +
+                               "  - Penambahan ExoPlayer Disk Cache (512 MB LRU Cache) untuk buffering streaming anti putus-putus saat sinyal seluler goyang.\n" +
+                               "  - Validasi bitstream berkas offline dan eliminasi chunk korup.\n" +
+                               "• Fix Media Notification & Lock Screen Artwork penuh beserta kontrol Next/Prev.\n" +
+                               "• Tab Antrean Putar (Queue Tracklist) di Expanded Player.",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

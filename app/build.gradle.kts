@@ -11,8 +11,8 @@ android {
         applicationId = "com.puki.nuclear"
         minSdk = 26
         targetSdk = 34
-        versionCode = 22
-        versionName = "1.0.21"
+        versionCode = 23
+        versionName = "1.0.22"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -79,6 +79,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-datasource:$media3Version")
+    implementation("androidx.media3:media3-database:$media3Version")
 
     // YouTube / SoundCloud Extractor (Pure stream, zero ads)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")

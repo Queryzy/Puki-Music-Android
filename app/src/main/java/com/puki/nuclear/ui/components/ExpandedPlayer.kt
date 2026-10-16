@@ -26,6 +26,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import com.puki.nuclear.core.PlaybackStateManager
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -732,16 +733,7 @@ fun ExpandedPlayerModal(
                             .clip(CircleShape)
                             .background(palette.primary)
                             .clickable {
-                                mediaController?.let {
-                                    if (it.isPlaying) {
-                                        it.pause()
-                                    } else {
-                                        if (it.playbackState == Player.STATE_IDLE) {
-                                            it.prepare()
-                                        }
-                                        it.play()
-                                    }
-                                }
+                                PlaybackStateManager.togglePlayPause()
                             },
                         contentAlignment = Alignment.Center
                     ) {

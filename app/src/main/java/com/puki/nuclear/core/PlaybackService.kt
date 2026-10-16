@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -28,8 +29,9 @@ class PlaybackService : MediaSessionService() {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        PlaybackStateManager.initContext(applicationContext)
 
-        // Acquire dedicated PARTIAL_WAKE_LOCK to prevent Huawei PowerGenie / Android Doze from freezing audio engine
+        // Acquire dedicated PARTIAL_WAKE_LOCK to prevent MIUI / HyperOS Doze from freezing audio engine
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "puki:playback_audio_lock")?.apply {
             setReferenceCounted(false)
@@ -64,7 +66,14 @@ class PlaybackService : MediaSessionService() {
             .setReadTimeoutMs(45_000)
             .setAllowCrossProtocolRedirects(true)
 
-        val dataSourceFactory = DefaultDataSource.Factory(this, httpDataSourceFactory)
+        // ExoPlayer Disk Cache (512 MB LRU Cache) to prevent streaming drops during mobile network latency spikes
+        val simpleCache = CacheHolder.getCache(this)
+        val cacheDataSourceFactory = CacheDataSource.Factory()
+            .setCache(simpleCache)
+            .setUpstreamDataSourceFactory(httpDataSourceFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        val dataSourceFactory = DefaultDataSource.Factory(this, cacheDataSourceFactory)
 
         // Auto-retry up to 8 times on network drops or connection reset
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
@@ -118,7 +127,6 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun play() {
-                // If player is in STATE_IDLE (after transient error or buffer stall), automatically prepare
                 if (basePlayer.playbackState == Player.STATE_IDLE) {
                     basePlayer.prepare()
                 }
@@ -126,24 +134,26 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun seekToNext() {
-                PlaybackStateManager.onPlayNext?.invoke()
+                PlaybackStateManager.playNext()
             }
 
             override fun seekToNextMediaItem() {
-                PlaybackStateManager.onPlayNext?.invoke()
+                PlaybackStateManager.playNext()
             }
 
             override fun seekToPrevious() {
-                PlaybackStateManager.onPlayPrevious?.invoke()
+                PlaybackStateManager.playPrevious()
             }
 
             override fun seekToPreviousMediaItem() {
-                PlaybackStateManager.onPlayPrevious?.invoke()
+                PlaybackStateManager.playPrevious()
             }
 
             override fun hasNextMediaItem(): Boolean = true
             override fun hasPreviousMediaItem(): Boolean = true
         }
+
+        PlaybackStateManager.setPlayerInstance(forwardingPlayer)
 
         mediaSession = MediaSession.Builder(this, forwardingPlayer).build()
 
@@ -151,6 +161,11 @@ class PlaybackService : MediaSessionService() {
             .setChannelId("puki_playback_channel")
             .build()
         setMediaNotificationProvider(notificationProvider)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

@@ -1,17 +1,374 @@
 package com.puki.nuclear.core
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.util.Log
+import androidx.annotation.OptIn
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import com.puki.nuclear.data.LocalMusicStore
+import com.puki.nuclear.model.RepeatMode
 import com.puki.nuclear.model.Track
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
+@OptIn(UnstableApi::class)
 object PlaybackStateManager {
-    @Volatile
-    var activeTrack: Track? = null
+    private const val TAG = "PlaybackStateManager"
+
+    // Persistent Process-level Coroutine Scope (100% independent of Activity or UI Composable lifecycle)
+    val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     @Volatile
-    var currentQueue: List<Track> = emptyList()
+    private var appContext: Context? = null
+
+    private val _activeTrack = MutableStateFlow<Track?>(null)
+    val activeTrack = _activeTrack.asStateFlow()
+
+    private val _currentQueue = MutableStateFlow<List<Track>>(emptyList())
+    val currentQueue = _currentQueue.asStateFlow()
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying = _isPlaying.asStateFlow()
+
+    private val _isResolvingStream = MutableStateFlow(false)
+    val isResolvingStream = _isResolvingStream.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(RepeatMode.ALL)
+    val repeatMode = _repeatMode.asStateFlow()
+
+    private val _isShuffle = MutableStateFlow(false)
+    val isShuffle = _isShuffle.asStateFlow()
+
+    private val _playbackPositionMs = MutableStateFlow(0L)
+    val playbackPositionMs = _playbackPositionMs.asStateFlow()
+
+    private val _playbackDurationMs = MutableStateFlow(0L)
+    val playbackDurationMs = _playbackDurationMs.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage = _errorMessage.asStateFlow()
 
     @Volatile
-    var onPlayNext: (() -> Unit)? = null
+    var player: Player? = null
 
-    @Volatile
-    var onPlayPrevious: (() -> Unit)? = null
+    private var resolveJob: Job? = null
+    private var progressJob: Job? = null
+
+    init {
+        startProgressTracker()
+    }
+
+    fun initContext(context: Context) {
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+    }
+
+    private fun startProgressTracker() {
+        progressJob?.cancel()
+        progressJob = serviceScope.launch {
+            while (true) {
+                try {
+                    val p = player
+                    if (p != null && p.isPlaying) {
+                        _playbackPositionMs.value = p.currentPosition.coerceAtLeast(0L)
+                        _playbackDurationMs.value = p.duration.coerceAtLeast(0L)
+                    }
+                } catch (_: Exception) {}
+                delay(500)
+            }
+        }
+    }
+
+    fun clearError() {
+        _errorMessage.value = null
+    }
+
+    fun setRepeatMode(mode: RepeatMode) {
+        _repeatMode.value = mode
+    }
+
+    fun setShuffle(shuffle: Boolean) {
+        _isShuffle.value = shuffle
+    }
+
+    fun setPlayerInstance(p: Player) {
+        player = p
+        p.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                _isPlaying.value = playing
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    handleTrackEnded()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.w(TAG, "ExoPlayer error [${error.errorCodeName} / ${error.errorCode}]: ${error.message}")
+                handlePlayerError()
+            }
+        })
+    }
+
+    fun playTrack(context: Context, track: Track, newQueue: List<Track>? = null) {
+        initContext(context)
+
+        // Ensure Service is started as standalone Started Foreground Service
+        try {
+            val serviceIntent = Intent(context, PlaybackService::class.java)
+            ContextCompat.startForegroundService(context, serviceIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start ForegroundService: ${e.message}")
+        }
+
+        resolveJob?.cancel()
+        _activeTrack.value = track
+        _errorMessage.value = null
+        if (newQueue != null && newQueue.isNotEmpty()) {
+            _currentQueue.value = newQueue
+        } else if (_currentQueue.value.none { it.id == track.id }) {
+            _currentQueue.value = _currentQueue.value + track
+        }
+
+        try {
+            LocalMusicStore(context).recordPlay(track)
+        } catch (_: Exception) {}
+
+        val localFile = OfflineManager.getLocalAudioFile(context, track.id)
+        if (localFile != null && localFile.exists()) {
+            // Local file playback (Pure 0 latency, 100% offline)
+            _isResolvingStream.value = false
+            resolveJob = serviceScope.launch {
+                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
+                withContext(Dispatchers.Main) {
+                    val p = player ?: return@withContext
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artist)
+                        .setArtworkUri(if (track.thumbnailUrl.isNotBlank()) Uri.parse(track.thumbnailUrl) else null)
+                        .apply {
+                            if (artworkBytes != null && artworkBytes.isNotEmpty()) {
+                                setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                            }
+                        }
+                        .build()
+                    val mediaItem = MediaItem.Builder()
+                        .setMediaId(track.id)
+                        .setUri(Uri.fromFile(localFile))
+                        .setMediaMetadata(metadata)
+                        .build()
+                    p.setMediaItem(mediaItem)
+                    p.prepare()
+                    p.play()
+                    _isPlaying.value = true
+                    _isResolvingStream.value = false
+                }
+            }
+            return
+        }
+
+        // Online streaming playback (Handled strictly in background)
+        _isResolvingStream.value = true
+        resolveJob = serviceScope.launch(Dispatchers.IO) {
+            val streamRes = StreamResolver.resolveAudioStreamDetailed(track.id)
+            streamRes.onSuccess { detailed ->
+                val updatedTrack = track.copy(
+                    streamUrl = detailed.streamUrl,
+                    viewCount = detailed.viewCount.takeIf { it > 0 } ?: track.viewCount,
+                    likeCount = detailed.likeCount.takeIf { it > 0 } ?: track.likeCount
+                )
+                val artworkBytes = fetchArtworkBytes(track.thumbnailUrl)
+
+                withContext(Dispatchers.Main) {
+                    _activeTrack.value = updatedTrack
+                    val p = player
+                    if (p != null) {
+                        val metadata = MediaMetadata.Builder()
+                            .setTitle(updatedTrack.title)
+                            .setArtist(updatedTrack.artist)
+                            .setArtworkUri(if (updatedTrack.thumbnailUrl.isNotBlank()) Uri.parse(updatedTrack.thumbnailUrl) else null)
+                            .apply {
+                                if (artworkBytes != null && artworkBytes.isNotEmpty()) {
+                                    setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                }
+                            }
+                            .build()
+                        val mediaItem = MediaItem.Builder()
+                            .setMediaId(updatedTrack.id)
+                            .setUri(detailed.streamUrl)
+                            .setMediaMetadata(metadata)
+                            .build()
+                        p.setMediaItem(mediaItem)
+                        p.prepare()
+                        p.play()
+                        _isPlaying.value = true
+                    }
+                    _isResolvingStream.value = false
+                }
+            }.onFailure { err ->
+                withContext(Dispatchers.Main) {
+                    _isResolvingStream.value = false
+                    _errorMessage.value = "Gagal memuat stream audio: ${err.message}"
+                }
+            }
+        }
+    }
+
+    fun togglePlayPause() {
+        val p = player ?: return
+        if (p.isPlaying) {
+            p.pause()
+        } else {
+            if (p.playbackState == Player.STATE_IDLE) {
+                p.prepare()
+            }
+            p.play()
+        }
+    }
+
+    fun seekTo(positionMs: Long) {
+        player?.seekTo(positionMs)
+    }
+
+    fun playNext() {
+        val ctx = appContext ?: return
+        val queue = _currentQueue.value
+        val track = _activeTrack.value
+        if (queue.isEmpty()) return
+
+        val nextTrack = if (_isShuffle.value && queue.size > 1) {
+            queue.filter { it.id != track?.id }.randomOrNull() ?: queue.first()
+        } else {
+            val curIdx = queue.indexOfFirst { it.id == track?.id }
+            val nextIdx = if (curIdx in 0 until queue.size - 1) curIdx + 1 else 0
+            queue[nextIdx]
+        }
+        playTrack(ctx, nextTrack)
+    }
+
+    fun playPrevious() {
+        val p = player
+        if (p != null && p.currentPosition > 5000L) {
+            p.seekTo(0)
+            return
+        }
+        val ctx = appContext ?: return
+        val queue = _currentQueue.value
+        val track = _activeTrack.value
+        if (queue.isEmpty()) return
+
+        val curIdx = queue.indexOfFirst { it.id == track?.id }
+        val prevIdx = if (curIdx > 0) curIdx - 1 else queue.size - 1
+        playTrack(ctx, queue[prevIdx])
+    }
+
+    private fun handleTrackEnded() {
+        val queue = _currentQueue.value
+        val track = _activeTrack.value
+        val p = player ?: return
+
+        when (_repeatMode.value) {
+            RepeatMode.ONE -> {
+                p.seekTo(0)
+                p.play()
+            }
+            RepeatMode.ALL -> {
+                if (queue.isNotEmpty()) {
+                    playNext()
+                }
+            }
+            RepeatMode.OFF -> {
+                val curIdx = queue.indexOfFirst { it.id == track?.id }
+                if (curIdx in 0 until queue.size - 1) {
+                    playNext()
+                } else {
+                    p.pause()
+                }
+            }
+        }
+    }
+
+    private fun handlePlayerError() {
+        val ctx = appContext ?: return
+        val curTrack = _activeTrack.value ?: return
+        val p = player ?: return
+        val currentPos = p.currentPosition.coerceAtLeast(0L)
+
+        serviceScope.launch(Dispatchers.IO) {
+            delay(1000)
+            val localFile = OfflineManager.getLocalAudioFile(ctx, curTrack.id)
+            if (localFile != null && localFile.exists()) {
+                withContext(Dispatchers.Main) {
+                    p.prepare()
+                    if (currentPos > 0) p.seekTo(currentPos)
+                    p.play()
+                }
+            } else {
+                val streamRes = StreamResolver.resolveAudioStreamDetailed(curTrack.id)
+                streamRes.onSuccess { detailed ->
+                    val artworkBytes = fetchArtworkBytes(curTrack.thumbnailUrl)
+                    withContext(Dispatchers.Main) {
+                        val metadata = MediaMetadata.Builder()
+                            .setTitle(curTrack.title)
+                            .setArtist(curTrack.artist)
+                            .setArtworkUri(if (curTrack.thumbnailUrl.isNotBlank()) Uri.parse(curTrack.thumbnailUrl) else null)
+                            .apply {
+                                if (artworkBytes != null && artworkBytes.isNotEmpty()) {
+                                    setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                }
+                            }
+                            .build()
+                        val mediaItem = MediaItem.Builder()
+                            .setMediaId(curTrack.id)
+                            .setUri(detailed.streamUrl)
+                            .setMediaMetadata(metadata)
+                            .build()
+                        p.setMediaItem(mediaItem)
+                        p.prepare()
+                        if (currentPos > 0) p.seekTo(currentPos)
+                        p.play()
+                    }
+                }.onFailure {
+                    withContext(Dispatchers.Main) {
+                        p.prepare()
+                        if (currentPos > 0) p.seekTo(currentPos)
+                        p.play()
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun fetchArtworkBytes(urlStr: String): ByteArray? = withContext(Dispatchers.IO) {
+        if (urlStr.isBlank()) return@withContext null
+        try {
+            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4000
+                readTimeout = 4000
+                instanceFollowRedirects = true
+            }
+            if (conn.responseCode == 200) {
+                conn.inputStream.use { it.readBytes() }
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
