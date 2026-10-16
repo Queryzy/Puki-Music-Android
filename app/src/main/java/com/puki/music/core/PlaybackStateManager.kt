@@ -1,4 +1,4 @@
-package com.puki.nuclear.core
+package com.puki.music.core
 
 import android.content.Context
 import android.content.Intent
@@ -11,9 +11,9 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import com.puki.nuclear.data.LocalMusicStore
-import com.puki.nuclear.model.RepeatMode
-import com.puki.nuclear.model.Track
+import com.puki.music.data.LocalMusicStore
+import com.puki.music.model.RepeatMode
+import com.puki.music.model.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

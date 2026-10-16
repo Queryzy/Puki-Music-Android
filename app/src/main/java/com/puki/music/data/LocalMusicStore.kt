@@ -1,9 +1,9 @@
-package com.puki.nuclear.data
+package com.puki.music.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.puki.nuclear.model.NetworkDownloadPreference
-import com.puki.nuclear.model.Track
+import com.puki.music.model.NetworkDownloadPreference
+import com.puki.music.model.Track
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

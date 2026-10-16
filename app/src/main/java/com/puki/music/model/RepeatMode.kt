@@ -1,4 +1,4 @@
-package com.puki.nuclear.model
+package com.puki.music.model
 
 enum class RepeatMode {
     OFF,    // Putar antrean berurutan, berhenti saat lagu terakhir selesai

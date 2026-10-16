@@ -1,4 +1,4 @@
-package com.puki.nuclear.core
+package com.puki.music.core
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
@@ -26,7 +28,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import com.puki.nuclear.ui.MainActivity
+import com.puki.music.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -127,10 +129,66 @@ class PlaybackService : MediaSessionService() {
             .setRenderersFactory(renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttributes, true)
+            .setAudioAttributes(audioAttributes, false) // Managed explicitly to prevent screen lock clicks from pausing audio
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        var wasPlayingBeforeTransientLoss = false
+
+        val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+            when (focusChange) {
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    basePlayer.volume = 1.0f
+                    if (wasPlayingBeforeTransientLoss) {
+                        wasPlayingBeforeTransientLoss = false
+                        basePlayer.play()
+                    }
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    // Duck volume to 20% on incoming notifications (WA, Telegram)
+                    basePlayer.volume = 0.2f
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    // Check if it is an actual incoming phone call
+                    val isPhoneCall = audioManager?.mode == AudioManager.MODE_IN_CALL ||
+                            audioManager?.mode == AudioManager.MODE_RINGTONE
+                    if (isPhoneCall) {
+                        wasPlayingBeforeTransientLoss = basePlayer.playWhenReady
+                        basePlayer.pause()
+                    }
+                    // Screen lock sounds and system dings are ignored (music keeps playing)
+                }
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    // Another app took exclusive audio focus (YouTube, Spotify, etc.)
+                    wasPlayingBeforeTransientLoss = false
+                    basePlayer.pause()
+                }
+            }
+        }
+
+        fun requestAudioFocus() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val playbackAttributes = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+                val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(playbackAttributes)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener(focusChangeListener)
+                    .build()
+                audioManager?.requestAudioFocus(focusRequest)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager?.requestAudioFocus(
+                    focusChangeListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                )
+            }
+        }
 
         // 1:1 Spotify & YouTube Music lock controller:
         // Hold CPU WakeLock & WifiLock continuously across active playback, buffering, track transitions,
@@ -138,14 +196,15 @@ class PlaybackService : MediaSessionService() {
         fun updateLocks() {
             val isResolving = PlaybackStateManager.isResolvingStream.value
             val isSessionActive = PlaybackStateManager.currentQueue.value.isNotEmpty()
-            val shouldLock = (basePlayer.playWhenReady && basePlayer.playbackState != Player.STATE_IDLE) ||
-                    (isSessionActive && isResolving) ||
-                    (isSessionActive && basePlayer.playbackState == Player.STATE_ENDED)
+            val isPlaying = basePlayer.playWhenReady && basePlayer.playbackState != Player.STATE_IDLE
+            val shouldLock = isPlaying || (isSessionActive && isResolving) ||
+                    (isSessionActive && basePlayer.playbackState == Player.STATE_ENDED) ||
+                    (isSessionActive && basePlayer.playbackState == Player.STATE_BUFFERING)
 
             if (shouldLock) {
                 try {
                     if (wakeLock?.isHeld != true) {
-                        wakeLock?.acquire(60 * 60 * 1000L)
+                        wakeLock?.acquire(24 * 60 * 60 * 1000L) // 24 hours lock
                     }
                 } catch (_: Exception) {}
                 try {
@@ -169,6 +228,9 @@ class PlaybackService : MediaSessionService() {
 
         basePlayer.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (playWhenReady) {
+                    requestAudioFocus()
+                }
                 updateLocks()
             }
 
@@ -264,6 +326,15 @@ class PlaybackService : MediaSessionService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         return START_STICKY
+    }
+
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        val isQueueActive = PlaybackStateManager.currentQueue.value.isNotEmpty()
+        val isResolving = PlaybackStateManager.isResolvingStream.value
+        val isPlaying = session.player.playWhenReady
+        // Force service to remain FOREGROUND during queue playback, transitions, and screen off
+        val shouldKeepForeground = startInForegroundRequired || isPlaying || isQueueActive || isResolving
+        super.onUpdateNotification(session, shouldKeepForeground)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

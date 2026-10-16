@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui.components
+package com.puki.music.ui.components
 
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -27,12 +27,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import com.puki.nuclear.core.OfflineManager
-import com.puki.nuclear.core.StreamResolver
-import com.puki.nuclear.data.LocalMusicStore
-import com.puki.nuclear.model.Album
-import com.puki.nuclear.model.Track
-import com.puki.nuclear.ui.theme.NuclearPalette
+import com.puki.music.core.OfflineManager
+import com.puki.music.core.StreamResolver
+import com.puki.music.data.LocalMusicStore
+import com.puki.music.model.Album
+import com.puki.music.model.Track
+import com.puki.music.ui.theme.NuclearPalette
 import kotlinx.coroutines.launch
 
 @Composable

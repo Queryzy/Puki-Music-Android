@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui.components
+package com.puki.music.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,8 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.puki.nuclear.model.Track
-import com.puki.nuclear.ui.theme.NuclearPalette
+import com.puki.music.model.Track
+import com.puki.music.ui.theme.NuclearPalette
 
 @Composable
 fun TrackItemCard(

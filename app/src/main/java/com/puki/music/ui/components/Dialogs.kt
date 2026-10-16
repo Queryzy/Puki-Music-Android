@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui.components
+package com.puki.music.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,12 +20,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.puki.nuclear.data.LocalMusicStore
-import com.puki.nuclear.data.Playlist
-import com.puki.nuclear.model.Track
-import com.puki.nuclear.ui.theme.NuclearPalette
-import com.puki.nuclear.ui.theme.NuclearThemeId
-import com.puki.nuclear.ui.theme.getNuclearPalette
+import com.puki.music.data.LocalMusicStore
+import com.puki.music.data.Playlist
+import com.puki.music.model.Track
+import com.puki.music.ui.theme.NuclearPalette
+import com.puki.music.ui.theme.NuclearThemeId
+import com.puki.music.ui.theme.getNuclearPalette
 
 @Composable
 fun AddToPlaylistDialog(

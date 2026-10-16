@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui
+package com.puki.music.ui
 
 import android.Manifest
 import android.content.ComponentName
@@ -45,22 +45,22 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
 import com.google.common.util.concurrent.ListenableFuture
-import com.puki.nuclear.core.AppUpdateManager
-import com.puki.nuclear.core.OfflineManager
-import com.puki.nuclear.core.PlaybackService
-import com.puki.nuclear.core.PlaybackStateManager
-import com.puki.nuclear.core.ReleaseInfo
-import com.puki.nuclear.core.StreamResolver
-import com.puki.nuclear.data.LocalMusicStore
-import com.puki.nuclear.data.ArtistAffinity
-import com.puki.nuclear.data.BehaviorFeedSection
-import com.puki.nuclear.data.Playlist
-import com.puki.nuclear.model.Album
-import com.puki.nuclear.model.NetworkDownloadPreference
-import com.puki.nuclear.model.RepeatMode
-import com.puki.nuclear.model.Track
-import com.puki.nuclear.ui.components.*
-import com.puki.nuclear.ui.theme.*
+import com.puki.music.core.AppUpdateManager
+import com.puki.music.core.OfflineManager
+import com.puki.music.core.PlaybackService
+import com.puki.music.core.PlaybackStateManager
+import com.puki.music.core.ReleaseInfo
+import com.puki.music.core.StreamResolver
+import com.puki.music.data.LocalMusicStore
+import com.puki.music.data.ArtistAffinity
+import com.puki.music.data.BehaviorFeedSection
+import com.puki.music.data.Playlist
+import com.puki.music.model.Album
+import com.puki.music.model.NetworkDownloadPreference
+import com.puki.music.model.RepeatMode
+import com.puki.music.model.Track
+import com.puki.music.ui.components.*
+import com.puki.music.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
         try {
             val serviceIntent = Intent(this, PlaybackService::class.java)
-            startService(serviceIntent)
+            androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to start PlaybackService: ${e.message}")
         }
@@ -2287,12 +2287,13 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.30 (Official Production Release):\n" +
-                               "  - Migrasi ke Production RSA 4096-bit Keystore (V1, V2, V3, V4 signed).\n" +
-                               "  - Package name resmi: `com.puki.nuclear` (menghilangkan warning 'Install anyway' & 'High-risk debug certificate').\n" +
-                               "  - 1:1 Spotify/YT Music: Continuous Lock Session, Gapless Pre-Resolving, Native AudioFocus Ducking & Auto-Resume.\n" +
-                               "• v1.0.29: Continuous Lock Session & Gapless Pre-Resolving.\n" +
-                               "• v1.0.28: Fix Audio Freeze & Eliminasi CacheWriter Contention.",
+                        text = "• v1.0.31 (Puki Music Official Release):\n" +
+                               "  - Rename package resmi menjadi `com.puki.music`.\n" +
+                               "  - Fix Lock Screen Dropout: Abaikan system sound transient loss (suara klik kunci layar HP tidak lagi me-pause musik).\n" +
+                               "  - Pinned Foreground Service: `onUpdateNotification` menahan Foreground Service aktif tanpa jeda saat ganti trek di layar mati/hitam.\n" +
+                               "  - Continuous 24h Partial WakeLock & WifiLock menjaga socket jaringan NewPipe tetap hidup saat transisi di Doze mode.\n" +
+                               "• v1.0.30: Production Keystore Signing & Standar 1:1 Spotify/YT Music.\n" +
+                               "• v1.0.29: Gapless Pre-Resolving Engine & Continuous Lock.",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

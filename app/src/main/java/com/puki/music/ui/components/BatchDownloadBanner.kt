@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui.components
+package com.puki.music.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
@@ -16,8 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.puki.nuclear.core.BatchProgressState
-import com.puki.nuclear.ui.theme.NuclearPalette
+import com.puki.music.core.BatchProgressState
+import com.puki.music.ui.theme.NuclearPalette
 
 @Composable
 fun BatchDownloadBanner(

@@ -1,4 +1,4 @@
-package com.puki.nuclear.model
+package com.puki.music.model
 
 data class Album(
     val id: String,

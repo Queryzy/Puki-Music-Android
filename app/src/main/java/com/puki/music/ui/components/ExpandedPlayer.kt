@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui.components
+package com.puki.music.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,20 +26,20 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
-import com.puki.nuclear.core.PlaybackStateManager
+import com.puki.music.core.PlaybackStateManager
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
-import com.puki.nuclear.core.LyricsResult
-import com.puki.nuclear.core.LyricsService
+import com.puki.music.core.LyricsResult
+import com.puki.music.core.LyricsService
 import coil.compose.AsyncImage
-import com.puki.nuclear.data.LocalMusicStore
-import com.puki.nuclear.model.RepeatMode
-import com.puki.nuclear.model.Track
-import com.puki.nuclear.ui.theme.NuclearPalette
+import com.puki.music.data.LocalMusicStore
+import com.puki.music.model.RepeatMode
+import com.puki.music.model.Track
+import com.puki.music.ui.theme.NuclearPalette
 import kotlinx.coroutines.delay
 
 @Composable

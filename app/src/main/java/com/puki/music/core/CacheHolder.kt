@@ -1,4 +1,4 @@
-package com.puki.nuclear.core
+package com.puki.music.core
 
 import android.content.Context
 import androidx.annotation.OptIn

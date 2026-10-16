@@ -1,13 +1,13 @@
-package com.puki.nuclear.core
+package com.puki.music.core
 
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import com.puki.nuclear.data.LocalMusicStore
-import com.puki.nuclear.model.NetworkDownloadPreference
-import com.puki.nuclear.model.Track
+import com.puki.music.data.LocalMusicStore
+import com.puki.music.model.NetworkDownloadPreference
+import com.puki.music.model.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

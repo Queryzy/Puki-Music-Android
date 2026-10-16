@@ -1,4 +1,4 @@
-package com.puki.nuclear.ui.theme
+package com.puki.music.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

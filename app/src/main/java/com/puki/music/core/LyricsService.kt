@@ -1,7 +1,7 @@
-package com.puki.nuclear.core
+package com.puki.music.core
 
 import android.content.Context
-import com.puki.nuclear.model.Track
+import com.puki.music.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient

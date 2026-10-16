@@ -1,4 +1,4 @@
-package com.puki.nuclear.core
+package com.puki.music.core
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -12,8 +12,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.puki.nuclear.R
-import com.puki.nuclear.ui.MainActivity
+import com.puki.music.R
+import com.puki.music.ui.MainActivity
 
 class DownloadService : Service() {
 
@@ -21,9 +21,9 @@ class DownloadService : Service() {
         const val CHANNEL_ID = "puki_download_channel"
         const val NOTIFICATION_ID = 4040
 
-        private const val ACTION_UPDATE_PROGRESS = "com.puki.nuclear.action.UPDATE_DOWNLOAD_PROGRESS"
-        private const val ACTION_NOTIFY_COMPLETE = "com.puki.nuclear.action.NOTIFY_DOWNLOAD_COMPLETE"
-        private const val ACTION_STOP = "com.puki.nuclear.action.STOP_DOWNLOAD"
+        private const val ACTION_UPDATE_PROGRESS = "com.puki.music.action.UPDATE_DOWNLOAD_PROGRESS"
+        private const val ACTION_NOTIFY_COMPLETE = "com.puki.music.action.NOTIFY_DOWNLOAD_COMPLETE"
+        private const val ACTION_STOP = "com.puki.music.action.STOP_DOWNLOAD"
 
         private const val EXTRA_TITLE = "extra_title"
         private const val EXTRA_SUBTEXT = "extra_subtext"

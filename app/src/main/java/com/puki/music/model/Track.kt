@@ -1,4 +1,4 @@
-package com.puki.nuclear.model
+package com.puki.music.model
 
 import java.util.Locale
 
