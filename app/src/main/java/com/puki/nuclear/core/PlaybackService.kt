@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
 import androidx.annotation.OptIn
@@ -29,6 +30,7 @@ class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     companion object {
         const val PLAYBACK_CHANNEL_ID = "puki_playback_channel"
@@ -61,6 +63,12 @@ class PlaybackService : MediaSessionService() {
         // Acquire dedicated PARTIAL_WAKE_LOCK to prevent MIUI / HyperOS Doze from freezing audio engine
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "puki:playback_audio_lock")?.apply {
+            setReferenceCounted(false)
+        }
+
+        // Acquire dedicated WIFI_MODE_FULL_HIGH_PERF WifiLock to prevent network sleep during screen off
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        wifiLock = wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "puki:playback_wifi_lock")?.apply {
             setReferenceCounted(false)
         }
 
@@ -115,20 +123,44 @@ class PlaybackService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-        // Manage CPU WakeLock based on active playback state
+        // Dynamic lock controller: keep CPU & Wi-Fi active during both PLAYING and BUFFERING states
+        fun updateLocks() {
+            val shouldLock = basePlayer.playWhenReady &&
+                    basePlayer.playbackState != Player.STATE_IDLE &&
+                    basePlayer.playbackState != Player.STATE_ENDED
+
+            if (shouldLock) {
+                try {
+                    if (wakeLock?.isHeld != true) {
+                        wakeLock?.acquire(60 * 60 * 1000L)
+                    }
+                } catch (_: Exception) {}
+                try {
+                    if (wifiLock?.isHeld != true) {
+                        wifiLock?.acquire()
+                    }
+                } catch (_: Exception) {}
+            } else {
+                try {
+                    if (wakeLock?.isHeld == true) {
+                        wakeLock?.release()
+                    }
+                } catch (_: Exception) {}
+                try {
+                    if (wifiLock?.isHeld == true) {
+                        wifiLock?.release()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
         basePlayer.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) {
-                    try {
-                        wakeLock?.acquire(30 * 60 * 1000L) // 30 min per track max lock
-                    } catch (_: Exception) {}
-                } else {
-                    try {
-                        if (wakeLock?.isHeld == true) {
-                            wakeLock?.release()
-                        }
-                    } catch (_: Exception) {}
-                }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                updateLocks()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                updateLocks()
             }
         })
 
@@ -212,6 +244,11 @@ class PlaybackService : MediaSessionService() {
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
+            }
+        } catch (_: Exception) {}
+        try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
             }
         } catch (_: Exception) {}
 

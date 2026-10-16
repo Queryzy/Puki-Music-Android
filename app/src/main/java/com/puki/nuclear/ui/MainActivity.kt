@@ -87,6 +87,13 @@ class MainActivity : ComponentActivity() {
 
         PlaybackStateManager.initContext(this)
 
+        try {
+            val serviceIntent = Intent(this, PlaybackService::class.java)
+            startService(serviceIntent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start PlaybackService: ${e.message}")
+        }
+
         val sessionToken = SessionToken(
             this,
             ComponentName(this, PlaybackService::class.java)
@@ -2280,14 +2287,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.23: Stabilitas Penuh Audio Background & Optimasi ANR (Spotify/YT Music Standard):\n" +
-                               "  - Registrasi NotificationChannel resmi ('Pemutaran Musik Puki') dengan IMPORTANCE_LOW, menjamin Foreground Service aktif sah di Android 14 / HyperOS tanpa dibunuh OS.\n" +
-                               "  - Memperbaiki ANR (Application Not Responding) dengan menghapus pemanggilan prematur startForegroundService dan mengandalkan lifecycle native Media3.\n" +
-                               "  - Melindungi playback engine saat recent apps di-swipe (tidak lagi mematikan service saat antrean musik aktif).\n" +
-                               "  - Mengalihkan kalkulasi disk I/O & status offline di tab Settings ke background thread (Dispatchers.IO) agar UI tetap responsif 60-120 FPS.\n" +
-                               "• v1.0.22: Decoupled Standalone Playback Engine, 512MB ExoPlayer Disk Cache, dan Process Scope Queue.\n" +
-                               "• Fix Media Notification & Lock Screen Artwork penuh beserta kontrol Next/Prev.\n" +
-                               "• Tab Antrean Putar (Queue Tracklist) di Expanded Player.",
+                        text = "• v1.0.24: Fix Audio Freeze Saat Layar Mati (Buffer Lock & WifiLock Guard):\n" +
+                               "  - Memperbaiki bug WakeLock release saat buffering: CPU & Wi-Fi Lock kini tetap dipegang aktif saat streaming memuat buffer di latar belakang.\n" +
+                               "  - Menambahkan WifiLock (WIFI_MODE_FULL_HIGH_PERF) agar chip Wi-Fi/modem seluler tidak masuk power-save saat layar mati di mode Battery Saver (recommended).\n" +
+                               "  - Inisialisasi Service via startService (START_STICKY) independen dari siklus hidup Activity.\n" +
+                               "• v1.0.23: Registrasi NotificationChannel resmi, eliminasi ANR, dan optimasi disk I/O asinkron.\n" +
+                               "• v1.0.22: Decoupled Standalone Playback Engine, 512MB ExoPlayer Disk Cache, dan Process Scope Queue.",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
