@@ -2287,12 +2287,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.24: Fix Audio Freeze Saat Layar Mati (Buffer Lock & WifiLock Guard):\n" +
-                               "  - Memperbaiki bug WakeLock release saat buffering: CPU & Wi-Fi Lock kini tetap dipegang aktif saat streaming memuat buffer di latar belakang.\n" +
-                               "  - Menambahkan WifiLock (WIFI_MODE_FULL_HIGH_PERF) agar chip Wi-Fi/modem seluler tidak masuk power-save saat layar mati di mode Battery Saver (recommended).\n" +
-                               "  - Inisialisasi Service via startService (START_STICKY) independen dari siklus hidup Activity.\n" +
-                               "• v1.0.23: Registrasi NotificationChannel resmi, eliminasi ANR, dan optimasi disk I/O asinkron.\n" +
-                               "• v1.0.22: Decoupled Standalone Playback Engine, 512MB ExoPlayer Disk Cache, dan Process Scope Queue.",
+                        text = "• v1.0.25: Active Pre-Cache Engine Ala Spotify & YouTube Music (CacheWriter 1:1):\n" +
+                               "  - Menyematkan CacheWriter di background worker: menyedot 100% berkas audio ke SimpleCache lokal (512 MB) dalam hitungan detik pertama.\n" +
+                               "  - Pre-caching lagu berikutnya di antrean secara otomatis: transisi instan 0ms tanpa buffering atau jeda internet.\n" +
+                               "  - Sinkronisasi User-Agent browser murni untuk mengeliminasi rate-limiting YouTube Googlevideo CDN.\n" +
+                               "• v1.0.24: Fix Audio Freeze Saat Layar Mati (Buffer Lock & WifiLock Guard).\n" +
+                               "• v1.0.23: Registrasi NotificationChannel resmi, eliminasi ANR, dan optimasi disk I/O asinkron.",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp

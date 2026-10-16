@@ -94,9 +94,9 @@ class PlaybackService : MediaSessionService() {
             .setBackBuffer(30_000, true)
             .build()
 
-        // Robust HTTP DataSource with 30s connect timeout & 45s read timeout to survive CDN rate-pacing stalls
+        // Robust HTTP DataSource matching NewPipe browser signature
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .setConnectTimeoutMs(30_000)
             .setReadTimeoutMs(45_000)
             .setAllowCrossProtocolRedirects(true)

@@ -131,6 +131,7 @@ object PlaybackStateManager {
         initContext(context)
 
         resolveJob?.cancel()
+        PreCacheManager.cancel()
         _activeTrack.value = track
         _errorMessage.value = null
         if (newQueue != null && newQueue.isNotEmpty()) {
@@ -213,6 +214,7 @@ object PlaybackStateManager {
                         _isPlaying.value = true
                     }
                     _isResolvingStream.value = false
+                    PreCacheManager.preCacheCurrentAndNextTrack(context, detailed.streamUrl)
                 }
             }.onFailure { err ->
                 withContext(Dispatchers.Main) {
