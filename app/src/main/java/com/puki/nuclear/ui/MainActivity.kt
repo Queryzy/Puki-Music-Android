@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +49,8 @@ import com.puki.nuclear.core.PlaybackService
 import com.puki.nuclear.core.ReleaseInfo
 import com.puki.nuclear.core.StreamResolver
 import com.puki.nuclear.data.LocalMusicStore
+import com.puki.nuclear.data.ArtistAffinity
+import com.puki.nuclear.data.BehaviorFeedSection
 import com.puki.nuclear.data.Playlist
 import com.puki.nuclear.model.Album
 import com.puki.nuclear.model.NetworkDownloadPreference
@@ -906,15 +909,19 @@ fun DashboardTab(
     onFavoriteToggle: ((Track) -> Unit)? = null,
     onArtistClick: ((String) -> Unit)? = null
 ) {
-    val recSeed = remember { store.getRecommendationQuery() }
+    val topArtists = remember(activeTrack) { store.getUserTopArtists(6) }
+    val sections = remember(activeTrack) { store.getBehaviorFeedSections() }
+    var selectedSectionId by remember { mutableStateOf(sections.firstOrNull()?.id ?: "mix_personal") }
+    val activeSection = sections.firstOrNull { it.id == selectedSectionId } ?: sections.first()
+
     var trendingTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    LaunchedEffect(recSeed) {
+    LaunchedEffect(activeSection.query) {
         isLoading = true
-        val result = StreamResolver.getDashboardTracks(recSeed)
+        val result = StreamResolver.getDashboardTracks(activeSection.query)
         result.onSuccess {
             trendingTracks = it
         }
@@ -951,7 +958,7 @@ fun DashboardTab(
                                     .background(palette.success)
                             )
                             Text(
-                                text = "PERSONALIZED FEED",
+                                text = if (topArtists.isNotEmpty()) "PROFIL SELERA AKTIF (${topArtists.size} ARTIS)" else "PERSONALIZED FEED",
                                 color = palette.success,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
@@ -963,8 +970,7 @@ fun DashboardTab(
                             onClick = {
                                 scope.launch {
                                     isLoading = true
-                                    val newSeed = store.getRecommendationQuery()
-                                    val res = StreamResolver.getDashboardTracks(newSeed)
+                                    val res = StreamResolver.getDashboardTracks(activeSection.query)
                                     res.onSuccess { trendingTracks = it }
                                     isLoading = false
                                 }
@@ -977,18 +983,145 @@ fun DashboardTab(
 
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Berdasarkan Aktivitas & Selera Musikmu",
+                        text = activeSection.title,
                         color = palette.textPrimary,
-                        fontSize = 15.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Seed: \"$recSeed\" • Mengadaptasi apa yang sering kamu cari & dengarkan.",
-                        color = palette.secondary,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
+                        text = activeSection.subtitle,
+                        color = palette.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(palette.primary.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = activeSection.reason,
+                                color = palette.primary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Horizontal Section Selector Chips
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(sections) { sec ->
+                            val isSelected = sec.id == activeSection.id
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedSectionId = sec.id },
+                                label = {
+                                    Text(
+                                        text = sec.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = palette.primary,
+                                    selectedLabelColor = palette.background,
+                                    containerColor = palette.surface,
+                                    labelColor = palette.textSecondary
+                                ),
+                                border = BorderStroke(1.dp, if (isSelected) palette.primary else palette.border)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Horizontal Row of Top Listened Artists (Behavioral Affinity)
+        if (topArtists.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ARTIS PALING SERING DIDENGAR",
+                            color = palette.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "Berdasarkan behavior",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(topArtists) { artist ->
+                            Card(
+                                modifier = Modifier
+                                    .width(135.dp)
+                                    .clickable { onArtistClick?.invoke(artist.name) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                                border = BorderStroke(1.dp, palette.border)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(palette.primary.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = artist.name.take(1).uppercase(),
+                                            color = palette.primary,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = artist.name,
+                                        color = palette.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "${artist.playCount}x putar • ${artist.favoriteCount} fav",
+                                        color = palette.textSecondary,
+                                        fontSize = 9.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1100,7 +1233,7 @@ fun DashboardTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "TRENDING & REKOMENDASI",
+                    text = activeSection.title.uppercase(),
                     color = palette.primary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,

@@ -18,7 +18,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class BatchProgressState(
     val batchId: String,
@@ -102,79 +108,51 @@ object OfflineManager {
             val partFile = File(storageDir, "$baseName.$ext.part")
 
             // Check if partial download already exists for resuming
-            var existingBytes = if (partFile.exists() && partFile.length() > 0) partFile.length() else 0L
+            val existingBytes = if (partFile.exists() && partFile.length() > 0) partFile.length() else 0L
 
-            var requestBuilder = Request.Builder()
-                .url(streamUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            var downloadSuccess = false
 
-            if (existingBytes > 0) {
-                requestBuilder = requestBuilder.header("Range", "bytes=$existingBytes-")
-            }
-
-            var response = httpClient.newCall(requestBuilder.build()).execute()
-
-            // If range request was not satisfiable (HTTP 416), clear partial file and retry clean from byte 0
-            if (response.code == 416) {
-                response.close()
-                if (partFile.exists()) partFile.delete()
-                existingBytes = 0L
-                val cleanRequest = Request.Builder()
-                    .url(streamUrl)
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    .build()
-                response = httpClient.newCall(cleanRequest).execute()
-            }
-
-            response.use { resp ->
-                if (!resp.isSuccessful) {
-                    throw IllegalStateException("HTTP ${resp.code}: gagal mengunduh stream")
-                }
-
-                val body = resp.body ?: throw IllegalStateException("Empty response body")
-                val isPartial = resp.code == 206
-                val append = isPartial && existingBytes > 0
-
-                val totalBytes = if (isPartial) {
-                    resp.header("Content-Range")?.substringAfter("/")?.toLongOrNull()
-                        ?: (existingBytes + body.contentLength())
-                } else {
-                    val len = body.contentLength()
-                    if (len > 0) len else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
-                }
-
-                var downloadedBytes = if (append) existingBytes else 0L
-
-                val initialPct = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).coerceIn(0L, 99L).toInt() else 0
-                onProgress(initialPct)
-
-                body.byteStream().use { input ->
-                    FileOutputStream(partFile, append).use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var read: Int
-                        var lastReported = initialPct
-                        while (input.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
-                            downloadedBytes += read
-                            val progress = if (totalBytes > 0) {
-                                ((downloadedBytes * 100) / totalBytes).coerceIn(0L, 99L).toInt()
-                            } else {
-                                0
-                            }
-                            if (progress != lastReported) {
-                                lastReported = progress
-                                onProgress(progress)
+            // High-speed parallel chunk download (4 concurrent connections, 512 KB chunks)
+            // Bypasses YouTube CDN TCP pacing to achieve full bandwidth speed
+            if (existingBytes == 0L) {
+                try {
+                    val probeReq = Request.Builder()
+                        .url(streamUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .header("Range", "bytes=0-0")
+                        .build()
+                    val probeResp = httpClient.newCall(probeReq).execute()
+                    probeResp.use { pResp ->
+                        if (pResp.code == 206) {
+                            val cr = pResp.header("Content-Range")
+                            val totalBytes = cr?.substringAfter("/")?.trim()?.toLongOrNull() ?: -1L
+                            if (totalBytes > 256_000L) {
+                                downloadParallelChunks(
+                                    streamUrl = streamUrl,
+                                    partFile = partFile,
+                                    targetFile = targetFile,
+                                    totalBytes = totalBytes,
+                                    onProgress = onProgress
+                                )
+                                downloadSuccess = true
                             }
                         }
-                        output.flush()
                     }
+                } catch (_: Exception) {
+                    downloadSuccess = false
                 }
+            }
 
-                if (targetFile.exists()) targetFile.delete()
-                if (!partFile.renameTo(targetFile)) {
-                    partFile.copyTo(targetFile, overwrite = true)
-                    partFile.delete()
-                }
+            if (!downloadSuccess) {
+                // Sequential fallback with HTTP 206 Range resume support
+                downloadSequential(
+                    streamUrl = streamUrl,
+                    track = track,
+                    partFile = partFile,
+                    targetFile = targetFile,
+                    existingBytes = existingBytes,
+                    onProgress = onProgress
+                )
             }
 
             onProgress(100)
@@ -207,6 +185,176 @@ object OfflineManager {
             val store = LocalMusicStore(context)
             store.saveOfflineTrack(offlineTrack, targetFile.absolutePath)
             offlineTrack
+        }
+    }
+
+    private suspend fun downloadParallelChunks(
+        streamUrl: String,
+        partFile: File,
+        targetFile: File,
+        totalBytes: Long,
+        onProgress: (Int) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val chunkSize = 512 * 1024L // 512 KB chunks avoid CDN bandwidth pacing
+        val numChunks = ((totalBytes + chunkSize - 1) / chunkSize).toInt()
+        val raf = RandomAccessFile(partFile, "rw")
+        val rafLock = Any()
+
+        try {
+            if (raf.length() < totalBytes) {
+                raf.setLength(totalBytes)
+            }
+            val downloadedBytes = AtomicLong(0L)
+            var lastReported = 0
+            val semaphore = Semaphore(4) // 4 concurrent connections max
+
+            val jobs = (0 until numChunks).map { chunkIndex ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val start = chunkIndex * chunkSize
+                        val end = (start + chunkSize - 1).coerceAtMost(totalBytes - 1)
+                        var attempt = 0
+                        var chunkDone = false
+                        var lastErr: Exception? = null
+
+                        while (attempt < 3 && !chunkDone) {
+                            attempt++
+                            try {
+                                val req = Request.Builder()
+                                    .url(streamUrl)
+                                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                                    .header("Range", "bytes=$start-$end")
+                                    .build()
+                                val resp = httpClient.newCall(req).execute()
+                                resp.use { cResp ->
+                                    if (cResp.code != 206 && cResp.code != 200) {
+                                        throw IllegalStateException("HTTP ${cResp.code} on chunk $chunkIndex")
+                                    }
+                                    val body = cResp.body ?: throw IllegalStateException("Empty body on chunk $chunkIndex")
+                                    body.byteStream().use { input ->
+                                        val buf = ByteArray(32 * 1024)
+                                        var pos = start
+                                        var read: Int
+                                        while (input.read(buf).also { read = it } != -1) {
+                                            synchronized(rafLock) {
+                                                raf.seek(pos)
+                                                raf.write(buf, 0, read)
+                                            }
+                                            pos += read
+                                            val currentTotal = downloadedBytes.addAndGet(read.toLong())
+                                            val pct = ((currentTotal * 100) / totalBytes).toInt().coerceIn(0, 99)
+                                            if (pct != lastReported) {
+                                                lastReported = pct
+                                                onProgress(pct)
+                                            }
+                                        }
+                                    }
+                                }
+                                chunkDone = true
+                            } catch (e: Exception) {
+                                lastErr = e
+                                delay(200L * attempt)
+                            }
+                        }
+
+                        if (!chunkDone) {
+                            throw (lastErr ?: IllegalStateException("Gagal unduh chunk $chunkIndex"))
+                        }
+                    }
+                }
+            }
+            jobs.awaitAll()
+        } finally {
+            try { raf.close() } catch (_: Exception) {}
+        }
+
+        if (targetFile.exists()) targetFile.delete()
+        if (!partFile.renameTo(targetFile)) {
+            partFile.copyTo(targetFile, overwrite = true)
+            partFile.delete()
+        }
+    }
+
+    private fun downloadSequential(
+        streamUrl: String,
+        track: Track,
+        partFile: File,
+        targetFile: File,
+        existingBytes: Long,
+        onProgress: (Int) -> Unit
+    ) {
+        var currentExisting = existingBytes
+        var requestBuilder = Request.Builder()
+            .url(streamUrl)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+        if (currentExisting > 0) {
+            requestBuilder = requestBuilder.header("Range", "bytes=$currentExisting-")
+        }
+
+        var response = httpClient.newCall(requestBuilder.build()).execute()
+
+        // If range request was not satisfiable (HTTP 416), clear partial file and retry clean from byte 0
+        if (response.code == 416) {
+            response.close()
+            if (partFile.exists()) partFile.delete()
+            currentExisting = 0L
+            val cleanRequest = Request.Builder()
+                .url(streamUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build()
+            response = httpClient.newCall(cleanRequest).execute()
+        }
+
+        response.use { resp ->
+            if (!resp.isSuccessful) {
+                throw IllegalStateException("HTTP ${resp.code}: gagal mengunduh stream")
+            }
+
+            val body = resp.body ?: throw IllegalStateException("Empty response body")
+            val isPartial = resp.code == 206
+            val append = isPartial && currentExisting > 0
+
+            val totalBytes = if (isPartial) {
+                resp.header("Content-Range")?.substringAfter("/")?.toLongOrNull()
+                    ?: (currentExisting + body.contentLength())
+            } else {
+                val len = body.contentLength()
+                if (len > 0) len else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
+            }
+
+            var downloadedBytes = if (append) currentExisting else 0L
+
+            val initialPct = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).coerceIn(0L, 99L).toInt() else 0
+            onProgress(initialPct)
+
+            body.byteStream().use { input ->
+                FileOutputStream(partFile, append).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var read: Int
+                    var lastReported = initialPct
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read
+                        val progress = if (totalBytes > 0) {
+                            ((downloadedBytes * 100) / totalBytes).coerceIn(0L, 99L).toInt()
+                        } else {
+                            0
+                        }
+                        if (progress != lastReported) {
+                            lastReported = progress
+                            onProgress(progress)
+                        }
+                    }
+                    output.flush()
+                }
+            }
+
+            if (targetFile.exists()) targetFile.delete()
+            if (!partFile.renameTo(targetFile)) {
+                partFile.copyTo(targetFile, overwrite = true)
+                partFile.delete()
+            }
         }
     }
 

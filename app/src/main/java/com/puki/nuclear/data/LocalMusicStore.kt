@@ -15,6 +15,21 @@ data class Playlist(
     val autoDownload: Boolean = false
 )
 
+data class ArtistAffinity(
+    val name: String,
+    val playCount: Int,
+    val favoriteCount: Int,
+    val score: Int
+)
+
+data class BehaviorFeedSection(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val query: String,
+    val reason: String
+)
+
 class LocalMusicStore(private val context: Context) {
 
     private val prefs: SharedPreferences =
@@ -68,11 +83,6 @@ class LocalMusicStore(private val context: Context) {
             outArray.put(item)
         }
         prefs.edit().putString(KEY_PLAY_HISTORY, outArray.toString()).apply()
-
-        // Also seed recommendation query from played artist
-        if (track.artist.isNotBlank()) {
-            recordSearch(track.artist)
-        }
     }
 
     fun getFrequentlyPlayed(limit: Int = 30): List<Track> {
@@ -140,24 +150,175 @@ class LocalMusicStore(private val context: Context) {
         return list
     }
 
-    fun getRecommendationQuery(): String {
-        val searches = getRecentSearches()
-        if (searches.isNotEmpty()) {
-            val topSearch = searches.first()
-            return if (topSearch.contains("lagu", ignoreCase = true) || topSearch.contains("song", ignoreCase = true)) {
-                topSearch
-            } else {
-                "$topSearch popular songs"
+    fun getUserTopArtists(limit: Int = 6): List<ArtistAffinity> {
+        val playHistoryJson = prefs.getString(KEY_PLAY_HISTORY, "[]") ?: "[]"
+        val playArray = JSONArray(playHistoryJson)
+        val artistPlays = mutableMapOf<String, Int>()
+        val artistLastPlayed = mutableMapOf<String, Long>()
+
+        for (i in 0 until playArray.length()) {
+            val obj = playArray.getJSONObject(i)
+            val artist = obj.optString("artist", "").trim()
+            if (artist.isNotBlank() && !artist.equals("Unknown", ignoreCase = true)) {
+                val plays = obj.optInt("playCount", 1)
+                val last = obj.optLong("lastPlayed", 0L)
+                val key = artist
+                artistPlays[key] = (artistPlays[key] ?: 0) + plays
+                if (last > (artistLastPlayed[key] ?: 0L)) {
+                    artistLastPlayed[key] = last
+                }
             }
         }
 
         val favs = getFavorites()
-        if (favs.isNotEmpty()) {
-            val topArtist = favs.first().artist
-            return "$topArtist best tracks"
+        val artistFavs = mutableMapOf<String, Int>()
+        for (f in favs) {
+            val artist = f.artist.trim()
+            if (artist.isNotBlank() && !artist.equals("Unknown", ignoreCase = true)) {
+                artistFavs[artist] = (artistFavs[artist] ?: 0) + 1
+            }
         }
 
-        return "Trending Musik Indonesia Populer"
+        val offline = getOfflineTracks()
+        val artistOffline = mutableMapOf<String, Int>()
+        for (o in offline) {
+            val artist = o.artist.trim()
+            if (artist.isNotBlank() && !artist.equals("Unknown", ignoreCase = true)) {
+                artistOffline[artist] = (artistOffline[artist] ?: 0) + 1
+            }
+        }
+
+        val allArtists = (artistPlays.keys + artistFavs.keys + artistOffline.keys).toSet()
+        val affinities = mutableListOf<ArtistAffinity>()
+        val now = System.currentTimeMillis()
+        val threeDaysMs = 3 * 24 * 3600 * 1000L
+
+        for (a in allArtists) {
+            val plays = artistPlays[a] ?: 0
+            val favCount = artistFavs[a] ?: 0
+            val dlCount = artistOffline[a] ?: 0
+            val lastPlayed = artistLastPlayed[a] ?: 0L
+            val recencyBonus = if (now - lastPlayed < threeDaysMs && lastPlayed > 0) 3 else 0
+
+            // Formula: Plays * 2 + Favorites * 5 + Downloads * 3 + Recency
+            val score = (plays * 2) + (favCount * 5) + (dlCount * 3) + recencyBonus
+            if (score > 0) {
+                affinities.add(
+                    ArtistAffinity(
+                        name = a,
+                        playCount = plays,
+                        favoriteCount = favCount,
+                        score = score
+                    )
+                )
+            }
+        }
+
+        return affinities.sortedByDescending { it.score }.take(limit)
+    }
+
+    fun getBehaviorFeedSections(): List<BehaviorFeedSection> {
+        val topArtists = getUserTopArtists(5)
+        val sections = mutableListOf<BehaviorFeedSection>()
+
+        if (topArtists.isNotEmpty()) {
+            val top1 = topArtists[0].name
+            val top2 = topArtists.getOrNull(1)?.name
+
+            // 1. Personalized Core Mix
+            val mixQuery = if (top2 != null) "$top1 $top2 mix audio" else "$top1 best songs"
+            val mixDesc = if (top2 != null) "Kombinasi lagu dari $top1 & $top2" else "Koleksi lagu terbaik dari $top1"
+            sections.add(
+                BehaviorFeedSection(
+                    id = "mix_personal",
+                    title = "Mix Selera Saya",
+                    subtitle = mixDesc,
+                    query = mixQuery,
+                    reason = "Berdasarkan ${topArtists.take(2).joinToString(" & ") { it.name }}"
+                )
+            )
+
+            // 2. Focused on #1 Top Artist
+            sections.add(
+                BehaviorFeedSection(
+                    id = "artist_top_1",
+                    title = "Spesial $top1",
+                    subtitle = "Lagu-lagu teratas dari artis favoritmu",
+                    query = "$top1 top tracks audio",
+                    reason = "Paling sering kamu dengarkan (${topArtists[0].playCount}x putar)"
+                )
+            )
+
+            // 3. Focused on #2 Top Artist if exists
+            if (top2 != null) {
+                sections.add(
+                    BehaviorFeedSection(
+                        id = "artist_top_2",
+                        title = "Karena Kamu Suka $top2",
+                        subtitle = "Trek pilihan dari $top2",
+                        query = "$top2 popular songs",
+                        reason = "Artis favorit kedua kamu"
+                    )
+                )
+            }
+
+            // 4. Discovery / Similar tracks
+            sections.add(
+                BehaviorFeedSection(
+                    id = "discovery",
+                    title = "Eksplorasi Lagu Terkait",
+                    subtitle = "Menemukan musik yang sesuai karakter seleramu",
+                    query = "$top1 similar artists songs indonesia",
+                    reason = "Rekomendasi algoritma selera musik"
+                )
+            )
+
+            // 5. General trending fallback
+            sections.add(
+                BehaviorFeedSection(
+                    id = "chart_trending",
+                    title = "Trending Indonesia",
+                    subtitle = "Tangga lagu terpopuler di Indonesia saat ini",
+                    query = "Trending Musik Indonesia Populer",
+                    reason = "Chart publik"
+                )
+            )
+        } else {
+            // Fresh user without enough listening behavior yet
+            sections.add(
+                BehaviorFeedSection(
+                    id = "chart_trending",
+                    title = "Trending Indonesia",
+                    subtitle = "Musik terpopuler hari ini (Dengarkan lagu untuk personalisasi feed)",
+                    query = "Trending Musik Indonesia Populer",
+                    reason = "Chart umum"
+                )
+            )
+            sections.add(
+                BehaviorFeedSection(
+                    id = "chart_pop",
+                    title = "Populer Indonesia",
+                    subtitle = "Koleksi hits pop Indonesia pilihan",
+                    query = "Lagu Pop Indonesia Terbaru Hits",
+                    reason = "Rekomendasi awal"
+                )
+            )
+            sections.add(
+                BehaviorFeedSection(
+                    id = "chart_indie",
+                    title = "Indie & Alternatif",
+                    subtitle = "Musik santai dan akustik indie Indonesia",
+                    query = "Lagu Indie Indonesia Terbaik",
+                    reason = "Rekomendasi awal"
+                )
+            )
+        }
+
+        return sections
+    }
+
+    fun getRecommendationQuery(): String {
+        return getBehaviorFeedSections().first().query
     }
 
     // ── Offline Downloads ──────────────────────────────────────────────────
