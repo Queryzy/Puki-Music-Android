@@ -8,9 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import com.puki.nuclear.data.LocalMusicStore
 import com.puki.nuclear.model.NetworkDownloadPreference
 import com.puki.nuclear.model.Track
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -29,6 +32,9 @@ data class BatchProgressState(
 
 object OfflineManager {
 
+    // Persistent application scope: survives Activity minimization, app switching & screen off
+    val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     // Reactive progress state observed directly by Jetpack Compose UI
     val activeDownloads = mutableStateMapOf<String, Int>() // trackId -> percent (0..100)
     val activeBatch = mutableStateOf<BatchProgressState?>(null)
@@ -36,6 +42,8 @@ object OfflineManager {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
         .build()
 
     private val thumbHttpClient = OkHttpClient.Builder()
@@ -142,7 +150,7 @@ object OfflineManager {
 
                 body.byteStream().use { input ->
                     FileOutputStream(partFile, append).use { output ->
-                        val buffer = ByteArray(16 * 1024)
+                        val buffer = ByteArray(64 * 1024)
                         var read: Int
                         var lastReported = initialPct
                         while (input.read(buffer).also { read = it } != -1) {
@@ -209,11 +217,22 @@ object OfflineManager {
         val normId = LocalMusicStore.normalizeId(track.id)
         activeDownloads[track.id] = 0
         activeDownloads[normId] = 0
+        DownloadService.updateProgress(context, "Mengunduh Lagu", "${track.title} • 0%", 0)
         return try {
-            downloadTrack(context, track) { pct ->
+            val res = downloadTrack(context, track) { pct ->
                 activeDownloads[track.id] = pct
                 activeDownloads[normId] = pct
+                DownloadService.updateProgress(context, "Mengunduh Lagu", "${track.title} • $pct%", pct)
             }
+            if (res.isSuccess) {
+                DownloadService.notifyComplete(context, 1)
+            } else {
+                DownloadService.stop(context)
+            }
+            res
+        } catch (e: Exception) {
+            DownloadService.stop(context)
+            Result.failure(e)
         } finally {
             activeDownloads.remove(track.id)
             activeDownloads.remove(normId)
@@ -228,7 +247,10 @@ object OfflineManager {
         onTrackCompleted: (Track) -> Unit = {}
     ): Int {
         val toDownload = tracks.filterNot { isTrackDownloaded(context, it.id) }
-        if (toDownload.isEmpty()) return 0
+        if (toDownload.isEmpty()) {
+            DownloadService.stop(context)
+            return 0
+        }
 
         var completed = 0
         activeBatch.value = BatchProgressState(
@@ -241,14 +263,29 @@ object OfflineManager {
             overallPercent = 0
         )
 
+        DownloadService.updateProgress(
+            context = context,
+            title = "Mengunduh ($batchTitle)",
+            subText = "1/${toDownload.size}: ${toDownload.first().title} • 0%",
+            progress = 0
+        )
+
         try {
             for ((index, track) in toDownload.withIndex()) {
                 val currentItemNum = index + 1
+                val trackTitle = track.title
                 activeBatch.value = activeBatch.value?.copy(
                     currentItem = currentItemNum,
-                    currentTrackTitle = track.title,
+                    currentTrackTitle = trackTitle,
                     currentTrackPercent = 0,
                     overallPercent = ((index * 100) / toDownload.size)
+                )
+
+                DownloadService.updateProgress(
+                    context = context,
+                    title = "Mengunduh ($batchTitle)",
+                    subText = "$currentItemNum/${toDownload.size}: $trackTitle • 0%",
+                    progress = 0
                 )
 
                 val normId = LocalMusicStore.normalizeId(track.id)
@@ -262,6 +299,12 @@ object OfflineManager {
                         activeBatch.value = activeBatch.value?.copy(
                             currentTrackPercent = pct,
                             overallPercent = overall
+                        )
+                        DownloadService.updateProgress(
+                            context = context,
+                            title = "Mengunduh ($batchTitle)",
+                            subText = "$currentItemNum/${toDownload.size}: $trackTitle • $pct%",
+                            progress = pct
                         )
                     }
                 } catch (e: Exception) {
@@ -279,6 +322,12 @@ object OfflineManager {
                             activeBatch.value = activeBatch.value?.copy(
                                 currentTrackPercent = pct,
                                 overallPercent = overall
+                            )
+                            DownloadService.updateProgress(
+                                context = context,
+                                title = "Mengunduh ($batchTitle)",
+                                subText = "$currentItemNum/${toDownload.size}: $trackTitle • $pct%",
+                                progress = pct
                             )
                         }
                     } catch (e: Exception) {
@@ -302,6 +351,11 @@ object OfflineManager {
         } finally {
             activeBatch.value = null
             activeDownloads.clear()
+            if (completed > 0) {
+                DownloadService.notifyComplete(context, completed)
+            } else {
+                DownloadService.stop(context)
+            }
         }
         return completed
     }

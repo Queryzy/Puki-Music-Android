@@ -1,8 +1,13 @@
 package com.puki.nuclear.ui
 
+import android.Manifest
 import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -59,6 +64,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = LocalMusicStore(this)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
 
         val sessionToken = SessionToken(
             this,
@@ -157,7 +168,7 @@ fun NuclearMainScreen(
         }
 
         Toast.makeText(context, "Auto-download $label: Mengunduh '${track.title}'...", Toast.LENGTH_SHORT).show()
-        scope.launch {
+        OfflineManager.downloadScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             val res = OfflineManager.downloadTrackWithProgress(context, track)
             res.onSuccess {
                 offlineTracks = store.getOfflineTracks()
@@ -266,7 +277,7 @@ fun NuclearMainScreen(
         } else {
             if (OfflineManager.activeDownloads.containsKey(track.id)) return
             Toast.makeText(context, "Mengunduh ${track.title}...", Toast.LENGTH_SHORT).show()
-            scope.launch {
+            OfflineManager.downloadScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                 val res = OfflineManager.downloadTrackWithProgress(context, track)
                 res.onSuccess {
                     offlineTracks = store.getOfflineTracks()
@@ -290,7 +301,7 @@ fun NuclearMainScreen(
         }
         val batchKey = playlistId.ifBlank { playlistName }
         Toast.makeText(context, "Mengunduh ${toDownload.size} lagu di '$playlistName'...", Toast.LENGTH_SHORT).show()
-        scope.launch {
+        OfflineManager.downloadScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             val completed = OfflineManager.downloadBatchWithProgress(
                 context = context,
                 batchId = batchKey,
@@ -2301,6 +2312,148 @@ fun SettingsTab(
                             },
                             colors = RadioButtonDefaults.colors(selectedColor = palette.primary)
                         )
+                    }
+                }
+            }
+        }
+
+        // System & Background Performance Card
+        item {
+            Text(
+                text = "LATAR BELAKANG & NOTIFIKASI",
+                color = palette.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.NotificationsActive,
+                                contentDescription = null,
+                                tint = palette.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Notifikasi Download & Player",
+                                    color = palette.textPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Status unduh & kontrol pemutar di status bar",
+                                    color = palette.textSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                try {
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    try { context.startActivity(fallback) } catch (_: Exception) {}
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, tint = palette.primary)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(palette.border.copy(alpha = 0.5f))
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.BatteryChargingFull,
+                                contentDescription = null,
+                                tint = palette.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Abaikan Optimasi Baterai",
+                                    color = palette.textPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Cegah HP mematikan download saat layar mati",
+                                    color = palette.textSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                val powerManager = context.getSystemService(android.os.PowerManager::class.java)
+                                val isIgnoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                    powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+                                } else false
+
+                                if (isIgnoring) {
+                                    Toast.makeText(context, "Sudah dikecualikan dari optimasi baterai (Aktif)", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                    } else {
+                                        Intent(Settings.ACTION_SETTINGS)
+                                    }
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {
+                                        val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        try { context.startActivity(fallback) } catch (_: Exception) {}
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary.copy(alpha = 0.2f)),
+                            border = BorderStroke(1.dp, palette.primary),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("IZINKAN", color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
