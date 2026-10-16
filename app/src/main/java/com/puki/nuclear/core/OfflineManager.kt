@@ -93,49 +93,79 @@ object OfflineManager {
             val targetFile = File(storageDir, "$baseName.$ext")
             val partFile = File(storageDir, "$baseName.$ext.part")
 
-            val request = Request.Builder()
+            // Check if partial download already exists for resuming
+            var existingBytes = if (partFile.exists() && partFile.length() > 0) partFile.length() else 0L
+
+            var requestBuilder = Request.Builder()
                 .url(streamUrl)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .build()
 
-            val response = httpClient.newCall(request).execute()
+            if (existingBytes > 0) {
+                requestBuilder = requestBuilder.header("Range", "bytes=$existingBytes-")
+            }
+
+            var response = httpClient.newCall(requestBuilder.build()).execute()
+
+            // If range request was not satisfiable (HTTP 416), clear partial file and retry clean from byte 0
+            if (response.code == 416) {
+                response.close()
+                if (partFile.exists()) partFile.delete()
+                existingBytes = 0L
+                val cleanRequest = Request.Builder()
+                    .url(streamUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .build()
+                response = httpClient.newCall(cleanRequest).execute()
+            }
+
             response.use { resp ->
                 if (!resp.isSuccessful) {
                     throw IllegalStateException("HTTP ${resp.code}: gagal mengunduh stream")
                 }
 
                 val body = resp.body ?: throw IllegalStateException("Empty response body")
-                val totalBytes = body.contentLength()
-                val estimatedBytes = if (totalBytes > 0) totalBytes else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
-                var downloadedBytes = 0L
+                val isPartial = resp.code == 206
+                val append = isPartial && existingBytes > 0
 
-                try {
-                    body.byteStream().use { input ->
-                        FileOutputStream(partFile).use { output ->
-                            val buffer = ByteArray(16 * 1024)
-                            var read: Int
-                            var lastReported = -1
-                            while (input.read(buffer).also { read = it } != -1) {
-                                output.write(buffer, 0, read)
-                                downloadedBytes += read
-                                val progress = ((downloadedBytes * 100) / estimatedBytes).coerceIn(0L, 99L).toInt()
-                                if (progress != lastReported) {
-                                    lastReported = progress
-                                    onProgress(progress)
-                                }
+                val totalBytes = if (isPartial) {
+                    resp.header("Content-Range")?.substringAfter("/")?.toLongOrNull()
+                        ?: (existingBytes + body.contentLength())
+                } else {
+                    val len = body.contentLength()
+                    if (len > 0) len else (track.durationSeconds.coerceAtLeast(30) * 16_000L)
+                }
+
+                var downloadedBytes = if (append) existingBytes else 0L
+
+                val initialPct = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).coerceIn(0L, 99L).toInt() else 0
+                onProgress(initialPct)
+
+                body.byteStream().use { input ->
+                    FileOutputStream(partFile, append).use { output ->
+                        val buffer = ByteArray(16 * 1024)
+                        var read: Int
+                        var lastReported = initialPct
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            downloadedBytes += read
+                            val progress = if (totalBytes > 0) {
+                                ((downloadedBytes * 100) / totalBytes).coerceIn(0L, 99L).toInt()
+                            } else {
+                                0
                             }
-                            output.flush()
+                            if (progress != lastReported) {
+                                lastReported = progress
+                                onProgress(progress)
+                            }
                         }
+                        output.flush()
                     }
+                }
 
-                    if (targetFile.exists()) targetFile.delete()
-                    if (!partFile.renameTo(targetFile)) {
-                        partFile.copyTo(targetFile, overwrite = true)
-                        partFile.delete()
-                    }
-                } catch (e: Exception) {
-                    if (partFile.exists()) partFile.delete()
-                    throw e
+                if (targetFile.exists()) targetFile.delete()
+                if (!partFile.renameTo(targetFile)) {
+                    partFile.copyTo(targetFile, overwrite = true)
+                    partFile.delete()
                 }
             }
 
@@ -281,6 +311,8 @@ object OfflineManager {
         val norm = sanitizeFilename(trackId)
         val thumbFile = File(getStorageDir(context), "$norm.jpg")
         if (thumbFile.exists()) thumbFile.delete()
+        File(getStorageDir(context), "$norm.opus.part").delete()
+        File(getStorageDir(context), "$norm.m4a.part").delete()
 
         val success = file?.delete() ?: false
         val store = LocalMusicStore(context)
