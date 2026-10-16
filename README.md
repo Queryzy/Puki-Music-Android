@@ -13,7 +13,7 @@ Aplikasi pemutar musik Android mandiri berbasis arsitektur streaming YouTube Inn
 
 ## 🚀 Download APK Langsung
 - **Gitea Releases**: [Puki Music Releases](https://gitea.tsolusi.com/nanda/puki-music/releases)
-- **Local Server**: `http://10.10.9.22:8088/Puki-Music.apk`
+- **Direct Download**: [Puki-Music.apk v1.0.10](https://gitea.tsolusi.com/nanda/puki-music/releases/download/v1.0.10/Puki-Music.apk)
 
 ## 🛠️ Stack & Toolchain
 - **Language**: Kotlin 1.9.x
