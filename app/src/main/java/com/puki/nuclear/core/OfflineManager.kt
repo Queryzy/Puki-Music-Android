@@ -1,9 +1,12 @@
 package com.puki.nuclear.core
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import com.puki.nuclear.data.LocalMusicStore
+import com.puki.nuclear.model.NetworkDownloadPreference
 import com.puki.nuclear.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -270,5 +273,26 @@ object OfflineManager {
 
     fun getFormattedAvailableDeviceStorage(context: Context): String {
         return formatBytes(getAvailableDeviceStorageBytes(context))
+    }
+
+    fun canAutoDownload(context: Context, preference: NetworkDownloadPreference): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+            val activeNetwork = cm.activeNetwork ?: return false
+            val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
+
+            val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            if (!hasInternet) return false
+
+            when (preference) {
+                NetworkDownloadPreference.WIFI_ONLY -> {
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                }
+                NetworkDownloadPreference.ANY_NETWORK -> true
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 }

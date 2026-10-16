@@ -43,6 +43,8 @@ import com.puki.nuclear.core.StreamResolver
 import com.puki.nuclear.data.LocalMusicStore
 import com.puki.nuclear.data.Playlist
 import com.puki.nuclear.model.Album
+import com.puki.nuclear.model.NetworkDownloadPreference
+import com.puki.nuclear.model.RepeatMode
 import com.puki.nuclear.model.Track
 import com.puki.nuclear.ui.components.*
 import com.puki.nuclear.ui.theme.*
@@ -113,8 +115,9 @@ fun NuclearMainScreen(
     var isResolvingStream by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Mix Play Queue & State
+    // Queue, Repeat & Playback State
     var isMixPlayActive by remember { mutableStateOf(false) }
+    var repeatMode by remember { mutableStateOf(RepeatMode.OFF) }
     var currentQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
 
     // Dialog & Modal states
@@ -133,6 +136,33 @@ fun NuclearMainScreen(
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    fun triggerAutoDownloadIfAllowed(track: Track, label: String) {
+        if (OfflineManager.isTrackDownloaded(context, track.id)) return
+        if (OfflineManager.activeDownloads.containsKey(track.id)) return
+
+        val netPref = store.getAutoDownloadNetworkPreference()
+        if (!OfflineManager.canAutoDownload(context, netPref)) {
+            val requirement = if (netPref == NetworkDownloadPreference.WIFI_ONLY) "Wi-Fi" else "Koneksi Internet"
+            Toast.makeText(context, "Auto-download ditunda ($label): Menunggu $requirement", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        scope.launch {
+            val res = OfflineManager.downloadTrackWithProgress(context, track)
+            res.onSuccess {
+                offlineTracks = store.getOfflineTracks()
+            }
+        }
+    }
+
+    fun handleFavoriteToggle(track: Track) {
+        val isNowFav = store.toggleFavorite(track)
+        favoritesList = store.getFavorites()
+        if (isNowFav && store.isAutoDownloadLikedEnabled()) {
+            triggerAutoDownloadIfAllowed(track, "Favorit")
+        }
+    }
 
     // Playback logic: handles both local offline and remote CDN streaming
     fun playTrack(track: Track, newQueue: List<Track>? = null) {
@@ -253,8 +283,14 @@ fun NuclearMainScreen(
         }
     }
 
-    // Auto-advance for Mix Play when song ends
-    DisposableEffect(mediaController, currentQueue, isMixPlayActive, activeTrack) {
+    // Continuous playback & repeat queue listener
+    val currentQueueState by rememberUpdatedState(currentQueue)
+    val activeTrackState by rememberUpdatedState(activeTrack)
+    val repeatModeState by rememberUpdatedState(repeatMode)
+    val isMixPlayState by rememberUpdatedState(isMixPlayActive)
+
+    DisposableEffect(mediaController) {
+        val player = mediaController ?: return@DisposableEffect onDispose {}
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -262,19 +298,50 @@ fun NuclearMainScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    if (currentQueue.isNotEmpty()) {
-                        val currentIdx = currentQueue.indexOfFirst { it.id == activeTrack?.id }
-                        val nextIdx = if (currentIdx in 0 until currentQueue.size - 1) currentIdx + 1 else 0
-                        val nextTrack = currentQueue[nextIdx]
-                        playTrack(nextTrack, currentQueue)
+                    val queue = currentQueueState
+                    val track = activeTrackState
+                    val repMode = repeatModeState
+                    val isMix = isMixPlayState
+
+                    when (repMode) {
+                        RepeatMode.ONE -> {
+                            track?.let { t ->
+                                if (player.currentMediaItem != null) {
+                                    player.seekTo(0)
+                                    player.play()
+                                } else {
+                                    playTrack(t, queue)
+                                }
+                            }
+                        }
+                        RepeatMode.ALL -> {
+                            if (queue.isNotEmpty()) {
+                                val currentIdx = queue.indexOfFirst { it.id == track?.id }
+                                val nextIdx = if (currentIdx in 0 until queue.size - 1) currentIdx + 1 else 0
+                                playTrack(queue[nextIdx], queue)
+                            }
+                        }
+                        RepeatMode.OFF -> {
+                            if (queue.isNotEmpty()) {
+                                val currentIdx = queue.indexOfFirst { it.id == track?.id }
+                                if (currentIdx in 0 until queue.size - 1) {
+                                    playTrack(queue[currentIdx + 1], queue)
+                                } else if (isMix) {
+                                    val nextTrack = queue.randomOrNull() ?: queue.first()
+                                    playTrack(nextTrack, queue)
+                                } else {
+                                    isPlaying = false
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        mediaController?.addListener(listener)
-        isPlaying = mediaController?.isPlaying == true
+        player.addListener(listener)
+        isPlaying = player.isPlaying
         onDispose {
-            mediaController?.removeListener(listener)
+            player.removeListener(listener)
         }
     }
 
@@ -462,6 +529,7 @@ fun NuclearMainScreen(
                     onDownloadClick = { toggleOfflineDownload(it) },
                     onAddToPlaylist = { playlistToAddTo = it },
                     onFavoritesChanged = { favoritesList = store.getFavorites() },
+                    onFavoriteToggle = { handleFavoriteToggle(it) },
                     onArtistClick = { viewingArtist = it }
                 )
                 1 -> SearchTab(
@@ -474,6 +542,7 @@ fun NuclearMainScreen(
                     onDownloadClick = { toggleOfflineDownload(it) },
                     onAddToPlaylist = { playlistToAddTo = it },
                     onFavoritesChanged = { favoritesList = store.getFavorites() },
+                    onFavoriteToggle = { handleFavoriteToggle(it) },
                     onArtistClick = { viewingArtist = it }
                 )
                 2 -> LibraryTab(
@@ -488,6 +557,7 @@ fun NuclearMainScreen(
                     onDownloadClick = { toggleOfflineDownload(it) },
                     onAddToPlaylist = { playlistToAddTo = it },
                     onFavoritesChanged = { favoritesList = store.getFavorites() },
+                    onFavoriteToggle = { handleFavoriteToggle(it) },
                     onArtistClick = { viewingArtist = it },
                     onClearAllOffline = {
                         OfflineManager.deleteAllOfflineTracks(context)
@@ -512,7 +582,25 @@ fun NuclearMainScreen(
                     onMixPlayClick = { list -> startMixPlay(list) },
                     onDownloadTrack = { toggleOfflineDownload(it) },
                     onDownloadPlaylist = { tracks, name -> downloadPlaylist(tracks, name) },
+                    onToggleAutoDownload = { pl, enabled ->
+                        store.setPlaylistAutoDownload(pl.id, enabled)
+                        playlistsList = store.getPlaylists()
+                        activePlaylist = playlistsList.firstOrNull { it.id == pl.id }
+                        if (enabled) {
+                            val tracks = store.getPlaylistTracks(pl.id)
+                            val undownloaded = tracks.filterNot { OfflineManager.isTrackDownloaded(context, it.id) }
+                            if (undownloaded.isNotEmpty()) {
+                                Toast.makeText(context, "Auto-Download aktif: Mengunduh ${undownloaded.size} lagu di '${pl.name}'", Toast.LENGTH_SHORT).show()
+                                downloadPlaylist(tracks, pl.name, pl.id)
+                            } else {
+                                Toast.makeText(context, "Auto-Download '${pl.name}' aktif", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "Auto-Download '${pl.name}' dinonaktifkan", Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     onFavoritesChanged = { favoritesList = store.getFavorites() },
+                    onFavoriteToggle = { handleFavoriteToggle(it) },
                     onArtistClick = { viewingArtist = it },
                     onDeletePlaylist = { pl ->
                         store.deletePlaylist(pl.id)
@@ -523,6 +611,7 @@ fun NuclearMainScreen(
                 4 -> SettingsTab(
                     palette = palette,
                     context = context,
+                    store = store,
                     offlineTracks = offlineTracks,
                     onClearAllOffline = {
                         OfflineManager.deleteAllOfflineTracks(context)
@@ -552,25 +641,30 @@ fun NuclearMainScreen(
         NewPlaylistDialog(
             palette = palette,
             onDismiss = { showNewPlaylistDialog = false },
-            onCreate = { name ->
-                store.createPlaylist(name)
+            onCreate = { name, autoDownload ->
+                store.createPlaylist(name, autoDownload = autoDownload)
                 playlistsList = store.getPlaylists()
                 showNewPlaylistDialog = false
-                Toast.makeText(context, "Playlist '$name' dibuat", Toast.LENGTH_SHORT).show()
+                val msg = if (autoDownload) "Playlist '$name' dibuat (Auto-Download Aktif)" else "Playlist '$name' dibuat"
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             }
         )
     }
 
     if (playlistToAddTo != null) {
+        val targetTrack = playlistToAddTo!!
         AddToPlaylistDialog(
-            track = playlistToAddTo!!,
+            track = targetTrack,
             store = store,
             palette = palette,
             onDismiss = { playlistToAddTo = null },
-            onAdded = { plName ->
+            onAdded = { pl, trk ->
                 playlistsList = store.getPlaylists()
                 playlistToAddTo = null
-                Toast.makeText(context, "Ditambahkan ke $plName", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Ditambahkan ke ${pl.name}", Toast.LENGTH_SHORT).show()
+                if (pl.autoDownload) {
+                    triggerAutoDownloadIfAllowed(trk, pl.name)
+                }
             }
         )
     }
@@ -588,6 +682,20 @@ fun NuclearMainScreen(
             isDownloading = isDownloading,
             palette = palette,
             store = store,
+            repeatMode = repeatMode,
+            onToggleRepeat = {
+                repeatMode = when (repeatMode) {
+                    RepeatMode.OFF -> RepeatMode.ALL
+                    RepeatMode.ALL -> RepeatMode.ONE
+                    RepeatMode.ONE -> RepeatMode.OFF
+                }
+                val label = when (repeatMode) {
+                    RepeatMode.OFF -> "Repeat Dinonaktifkan"
+                    RepeatMode.ALL -> "Repeat Semua Lagu (Playlist/Album)"
+                    RepeatMode.ONE -> "Repeat 1 Lagu Ini Saja"
+                }
+                Toast.makeText(context, label, Toast.LENGTH_SHORT).show()
+            },
             onToggleMixPlay = {
                 isMixPlayActive = !isMixPlayActive
                 val msg = if (isMixPlayActive) "Mix Play Aktif (Autoplay Acak)" else "Mix Play Dinonaktifkan"
@@ -601,6 +709,13 @@ fun NuclearMainScreen(
             },
             onFavoritesChanged = {
                 favoritesList = store.getFavorites()
+            },
+            onFavoriteToggle = {
+                val isFav = store.toggleFavorite(activeTrack!!)
+                favoritesList = store.getFavorites()
+                if (isFav && store.isAutoDownloadLikedEnabled()) {
+                    triggerAutoDownloadIfAllowed(activeTrack!!, "Favorit")
+                }
             },
             onArtistClick = { artist ->
                 showExpandedPlayer = false
@@ -624,6 +739,7 @@ fun NuclearMainScreen(
             onDownloadTrack = { toggleOfflineDownload(it) },
             onDownloadAlbum = { tracks, name -> downloadPlaylist(tracks, name) },
             onAddToPlaylist = { playlistToAddTo = it },
+            onFavoriteToggle = { handleFavoriteToggle(it) },
             onClose = { viewingArtist = null }
         )
     }
@@ -642,6 +758,7 @@ fun DashboardTab(
     onDownloadClick: (Track) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onFavoritesChanged: () -> Unit,
+    onFavoriteToggle: ((Track) -> Unit)? = null,
     onArtistClick: ((String) -> Unit)? = null
 ) {
     val recSeed = remember { store.getRecommendationQuery() }
@@ -889,8 +1006,12 @@ fun DashboardTab(
                     onClick = { onTrackClick(track, trendingTracks) },
                     onArtistClick = onArtistClick,
                     onFavoriteToggle = {
-                        store.toggleFavorite(track)
-                        onFavoritesChanged()
+                        if (onFavoriteToggle != null) {
+                            onFavoriteToggle(track)
+                        } else {
+                            store.toggleFavorite(track)
+                            onFavoritesChanged()
+                        }
                     },
                     onAddToPlaylist = { onAddToPlaylist(track) },
                     onDownloadClick = { onDownloadClick(track) }
@@ -913,6 +1034,7 @@ fun SearchTab(
     onDownloadClick: (Track) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onFavoritesChanged: () -> Unit,
+    onFavoriteToggle: ((Track) -> Unit)? = null,
     onArtistClick: (String) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -1076,8 +1198,12 @@ fun SearchTab(
                         onClick = { onTrackSelected(track, searchResults) },
                         onArtistClick = onArtistClick,
                         onFavoriteToggle = {
-                            store.toggleFavorite(track)
-                            onFavoritesChanged()
+                            if (onFavoriteToggle != null) {
+                                onFavoriteToggle(track)
+                            } else {
+                                store.toggleFavorite(track)
+                                onFavoritesChanged()
+                            }
                         },
                         onAddToPlaylist = { onAddToPlaylist(track) },
                         onDownloadClick = { onDownloadClick(track) }
@@ -1169,6 +1295,7 @@ fun LibraryTab(
     onDownloadClick: (Track) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onFavoritesChanged: () -> Unit,
+    onFavoriteToggle: ((Track) -> Unit)? = null,
     onArtistClick: ((String) -> Unit)? = null,
     onClearAllOffline: (() -> Unit)? = null
 ) {
@@ -1241,15 +1368,28 @@ fun LibraryTab(
                     letterSpacing = 1.sp
                 )
                 if (favorites.isNotEmpty()) {
-                    Button(
-                        onClick = { onMixPlayClick(favorites) },
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.background, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("MIX PLAY", color = palette.background, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { onTrackClick(favorites.first(), favorites) },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = palette.background, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("PUTAR", color = palette.background, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { onMixPlayClick(favorites) },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.surfaceVariant),
+                            border = BorderStroke(1.dp, palette.border),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.primary, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("MIX", color = palette.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -1282,8 +1422,12 @@ fun LibraryTab(
                             onClick = { onTrackClick(track, favorites) },
                             onArtistClick = onArtistClick,
                             onFavoriteToggle = {
-                                store.toggleFavorite(track)
-                                onFavoritesChanged()
+                                if (onFavoriteToggle != null) {
+                                    onFavoriteToggle(track)
+                                } else {
+                                    store.toggleFavorite(track)
+                                    onFavoritesChanged()
+                                }
                             },
                             onAddToPlaylist = { onAddToPlaylist(track) },
                             onDownloadClick = { onDownloadClick(track) }
@@ -1425,8 +1569,12 @@ fun LibraryTab(
                             onClick = { onTrackClick(track, offlineTracks) },
                             onArtistClick = onArtistClick,
                             onFavoriteToggle = {
-                                store.toggleFavorite(track)
-                                onFavoritesChanged()
+                                if (onFavoriteToggle != null) {
+                                    onFavoriteToggle(track)
+                                } else {
+                                    store.toggleFavorite(track)
+                                    onFavoritesChanged()
+                                }
                             },
                             onAddToPlaylist = { onAddToPlaylist(track) },
                             onDownloadClick = { onDownloadClick(track) }
@@ -1455,7 +1603,9 @@ fun PlaylistsTab(
     onMixPlayClick: (List<Track>) -> Unit,
     onDownloadTrack: (Track) -> Unit,
     onDownloadPlaylist: (List<Track>, String) -> Unit,
+    onToggleAutoDownload: (Playlist, Boolean) -> Unit,
     onFavoritesChanged: () -> Unit,
+    onFavoriteToggle: ((Track) -> Unit)? = null,
     onArtistClick: ((String) -> Unit)? = null,
     onDeletePlaylist: (Playlist) -> Unit
 ) {
@@ -1502,6 +1652,9 @@ fun PlaylistsTab(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (currentTracks.isNotEmpty()) {
+                        IconButton(onClick = { onTrackClick(currentTracks.first(), currentTracks) }) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Putar Semua", tint = palette.primary)
+                        }
                         IconButton(onClick = { onDownloadPlaylist(currentTracks, activePlaylist.name) }) {
                             if (isBatchDownloadingThis && activeBatch != null) {
                                 Text("${activeBatch.overallPercent}%", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
@@ -1517,6 +1670,49 @@ fun PlaylistsTab(
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = palette.error)
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Auto-Download Playlist Toggle Card
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.surfaceVariant)
+                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        if (activePlaylist.autoDownload) Icons.Default.CloudDone else Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = if (activePlaylist.autoDownload) palette.primary else palette.textSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text("Auto-Download Playlist", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (activePlaylist.autoDownload) "Lagu baru otomatis diunduh offline" else "Nonaktif - unduh manual",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+                Switch(
+                    checked = activePlaylist.autoDownload,
+                    onCheckedChange = { onToggleAutoDownload(activePlaylist, it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = palette.background,
+                        checkedTrackColor = palette.primary
+                    )
+                )
             }
 
             val currentBatch = OfflineManager.activeBatch.value
@@ -1553,8 +1749,12 @@ fun PlaylistsTab(
                             onClick = { onTrackClick(track, currentTracks) },
                             onArtistClick = onArtistClick,
                             onFavoriteToggle = {
-                                store.toggleFavorite(track)
-                                onFavoritesChanged()
+                                if (onFavoriteToggle != null) {
+                                    onFavoriteToggle(track)
+                                } else {
+                                    store.toggleFavorite(track)
+                                    onFavoritesChanged()
+                                }
                             },
                             onDownloadClick = { onDownloadTrack(track) },
                             trailingAction = {
@@ -1675,7 +1875,18 @@ fun PlaylistsTab(
                                     }
                                     Column {
                                         Text(pl.name, color = palette.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text("${pl.trackCount} lagu", color = palette.textSecondary, fontSize = 12.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("${pl.trackCount} lagu", color = palette.textSecondary, fontSize = 12.sp)
+                                            if (pl.autoDownload) {
+                                                Text(
+                                                    "• AUTO-DL",
+                                                    color = palette.primary,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -1711,10 +1922,13 @@ fun PlaylistsTab(
 fun SettingsTab(
     palette: NuclearPalette,
     context: android.content.Context,
+    store: LocalMusicStore,
     offlineTracks: List<Track>,
     onClearAllOffline: () -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
+    var isAutoDlLiked by remember { mutableStateOf(store.isAutoDownloadLikedEnabled()) }
+    var networkPref by remember { mutableStateOf(store.getAutoDownloadNetworkPreference()) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1826,6 +2040,161 @@ fun SettingsTab(
             }
         }
 
+        // Automation & Download Settings
+        item {
+            Text(
+                text = "OTOMASI & PENGATURAN DOWNLOAD",
+                color = palette.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Auto-Download Liked Songs Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Auto-Download Lagu Disukai",
+                                color = palette.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Otomatis unduh saat lagu ditandai favorit (❤️)",
+                                color = palette.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = isAutoDlLiked,
+                            onCheckedChange = {
+                                isAutoDlLiked = it
+                                store.setAutoDownloadLikedEnabled(it)
+                                val msg = if (it) "Auto-download lagu favorit diaktifkan" else "Auto-download lagu favorit dinonaktifkan"
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = palette.background,
+                                checkedTrackColor = palette.primary
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(palette.border.copy(alpha = 0.5f))
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Network Preference Option
+                    Text(
+                        text = "Jaringan yang Diizinkan untuk Download Otomatis",
+                        color = palette.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Aturan koneksi data untuk seluruh auto-download",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (networkPref == NetworkDownloadPreference.WIFI_ONLY) palette.primary.copy(alpha = 0.15f) else Color.Transparent)
+                            .border(1.dp, if (networkPref == NetworkDownloadPreference.WIFI_ONLY) palette.primary else palette.border, RoundedCornerShape(8.dp))
+                            .clickable {
+                                networkPref = NetworkDownloadPreference.WIFI_ONLY
+                                store.setAutoDownloadNetworkPreference(NetworkDownloadPreference.WIFI_ONLY)
+                                Toast.makeText(context, "Mode auto-download: Hanya Wi-Fi", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(
+                                Icons.Default.Wifi,
+                                contentDescription = null,
+                                tint = if (networkPref == NetworkDownloadPreference.WIFI_ONLY) palette.primary else palette.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text("Hanya Wi-Fi (Hemat Kuota)", color = palette.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Unduh otomatis hanya saat tersambung Wi-Fi", color = palette.textSecondary, fontSize = 10.sp)
+                            }
+                        }
+                        RadioButton(
+                            selected = networkPref == NetworkDownloadPreference.WIFI_ONLY,
+                            onClick = {
+                                networkPref = NetworkDownloadPreference.WIFI_ONLY
+                                store.setAutoDownloadNetworkPreference(NetworkDownloadPreference.WIFI_ONLY)
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = palette.primary)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (networkPref == NetworkDownloadPreference.ANY_NETWORK) palette.primary.copy(alpha = 0.15f) else Color.Transparent)
+                            .border(1.dp, if (networkPref == NetworkDownloadPreference.ANY_NETWORK) palette.primary else palette.border, RoundedCornerShape(8.dp))
+                            .clickable {
+                                networkPref = NetworkDownloadPreference.ANY_NETWORK
+                                store.setAutoDownloadNetworkPreference(NetworkDownloadPreference.ANY_NETWORK)
+                                Toast.makeText(context, "Mode auto-download: Wi-Fi & Data Seluler", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(
+                                Icons.Default.SignalCellularAlt,
+                                contentDescription = null,
+                                tint = if (networkPref == NetworkDownloadPreference.ANY_NETWORK) palette.primary else palette.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text("Wi-Fi & Data Seluler", color = palette.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Unduh kapan pun ada jaringan internet", color = palette.textSecondary, fontSize = 10.sp)
+                            }
+                        }
+                        RadioButton(
+                            selected = networkPref == NetworkDownloadPreference.ANY_NETWORK,
+                            onClick = {
+                                networkPref = NetworkDownloadPreference.ANY_NETWORK
+                                store.setAutoDownloadNetworkPreference(NetworkDownloadPreference.ANY_NETWORK)
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = palette.primary)
+                        )
+                    }
+                }
+            }
+        }
+
         // Streaming Engines
         item {
             Text(
@@ -1883,7 +2252,7 @@ fun SettingsTab(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Puki Music v1.0.10",
+                        text = "Puki Music v1.0.11",
                         color = palette.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

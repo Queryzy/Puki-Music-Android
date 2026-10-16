@@ -15,11 +15,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.puki.nuclear.data.LocalMusicStore
+import com.puki.nuclear.data.Playlist
 import com.puki.nuclear.model.Track
 import com.puki.nuclear.ui.theme.NuclearPalette
 import com.puki.nuclear.ui.theme.NuclearThemeId
@@ -31,10 +33,11 @@ fun AddToPlaylistDialog(
     store: LocalMusicStore,
     palette: NuclearPalette,
     onDismiss: () -> Unit,
-    onAdded: (String) -> Unit
+    onAdded: (Playlist, Track) -> Unit
 ) {
     val playlists = remember { store.getPlaylists() }
     var newPlaylistName by remember { mutableStateOf("") }
+    var newAutoDownload by remember { mutableStateOf(false) }
     var isCreatingNew by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -82,7 +85,7 @@ fun AddToPlaylistDialog(
                                         .fillMaxWidth()
                                         .clickable {
                                             store.addTrackToPlaylist(pl.id, track)
-                                            onAdded(pl.name)
+                                            onAdded(pl, track)
                                         },
                                     colors = CardDefaults.cardColors(containerColor = palette.surface),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, palette.border)
@@ -94,12 +97,23 @@ fun AddToPlaylistDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            pl.name,
-                                            color = palette.textPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                        Column {
+                                            Text(
+                                                pl.name,
+                                                color = palette.textPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            if (pl.autoDownload) {
+                                                Text(
+                                                    "AUTO-DOWNLOAD AKTIF",
+                                                    color = palette.primary,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                        }
                                         Text(
                                             "${pl.trackCount} lagu",
                                             color = palette.textSecondary,
@@ -140,6 +154,27 @@ fun AddToPlaylistDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Download", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text("Unduh otomatis lagu saat ditambahkan", color = palette.textSecondary, fontSize = 10.sp)
+                        }
+                        Switch(
+                            checked = newAutoDownload,
+                            onCheckedChange = { newAutoDownload = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = palette.background,
+                                checkedTrackColor = palette.primary
+                            )
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
@@ -152,9 +187,9 @@ fun AddToPlaylistDialog(
                         Button(
                             onClick = {
                                 if (newPlaylistName.isNotBlank()) {
-                                    val pl = store.createPlaylist(newPlaylistName.trim())
+                                    val pl = store.createPlaylist(newPlaylistName.trim(), autoDownload = newAutoDownload)
                                     store.addTrackToPlaylist(pl.id, track)
-                                    onAdded(pl.name)
+                                    onAdded(pl, track)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
@@ -180,9 +215,10 @@ fun AddToPlaylistDialog(
 fun NewPlaylistDialog(
     palette: NuclearPalette,
     onDismiss: () -> Unit,
-    onCreate: (String) -> Unit
+    onCreate: (String, Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
+    var autoDownload by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -197,24 +233,47 @@ fun NewPlaylistDialog(
             )
         },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = { Text("Nama playlist...", color = palette.textSecondary) },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = palette.primary,
-                    unfocusedBorderColor = palette.border,
-                    focusedTextColor = palette.textPrimary,
-                    unfocusedTextColor = palette.textPrimary
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text("Nama playlist...", color = palette.textSecondary) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = palette.primary,
+                        unfocusedBorderColor = palette.border,
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Download", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Text("Otomatis simpan offline lagu di playlist", color = palette.textSecondary, fontSize = 10.sp)
+                    }
+                    Switch(
+                        checked = autoDownload,
+                        onCheckedChange = { autoDownload = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = palette.background,
+                            checkedTrackColor = palette.primary
+                        )
+                    )
+                }
+            }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank()) onCreate(name.trim())
+                    if (name.isNotBlank()) onCreate(name.trim(), autoDownload)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
             ) {

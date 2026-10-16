@@ -47,6 +47,7 @@ fun ArtistAlbumModal(
     onDownloadTrack: (Track) -> Unit,
     onDownloadAlbum: (List<Track>, String) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
+    onFavoriteToggle: ((Track) -> Unit)? = null,
     onClose: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Albums, 1 = Top Tracks
@@ -280,7 +281,9 @@ fun ArtistAlbumModal(
                                     isDownloading = isDownloading,
                                     palette = palette,
                                     onClick = { onTrackClick(track, albumTracks) },
-                                    onFavoriteToggle = { store.toggleFavorite(track) },
+                                    onFavoriteToggle = {
+                                        if (onFavoriteToggle != null) onFavoriteToggle(track) else store.toggleFavorite(track)
+                                    },
                                     onAddToPlaylist = { onAddToPlaylist(track) },
                                     onDownloadClick = { onDownloadTrack(track) }
                                 )
@@ -426,7 +429,9 @@ fun ArtistAlbumModal(
                                         isDownloading = isDownloading,
                                         palette = palette,
                                         onClick = { onTrackClick(track, topTracks) },
-                                        onFavoriteToggle = { store.toggleFavorite(track) },
+                                        onFavoriteToggle = {
+                                        if (onFavoriteToggle != null) onFavoriteToggle(track) else store.toggleFavorite(track)
+                                    },
                                         onAddToPlaylist = { onAddToPlaylist(track) },
                                         onDownloadClick = { onDownloadTrack(track) }
                                     )

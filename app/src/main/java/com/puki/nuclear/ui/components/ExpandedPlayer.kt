@@ -34,6 +34,7 @@ import com.puki.nuclear.core.LyricsResult
 import com.puki.nuclear.core.LyricsService
 import coil.compose.AsyncImage
 import com.puki.nuclear.data.LocalMusicStore
+import com.puki.nuclear.model.RepeatMode
 import com.puki.nuclear.model.Track
 import com.puki.nuclear.ui.theme.NuclearPalette
 import kotlinx.coroutines.delay
@@ -48,10 +49,13 @@ fun ExpandedPlayerModal(
     isDownloading: Boolean,
     palette: NuclearPalette,
     store: LocalMusicStore,
+    repeatMode: RepeatMode = RepeatMode.OFF,
+    onToggleRepeat: () -> Unit = {},
     onToggleMixPlay: () -> Unit,
     onDownloadClick: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onFavoritesChanged: () -> Unit,
+    onFavoriteToggle: (() -> Unit)? = null,
     onArtistClick: ((String) -> Unit)? = null,
     onNextTrack: (() -> Unit)? = null,
     onPreviousTrack: (() -> Unit)? = null,
@@ -171,8 +175,13 @@ fun ExpandedPlayerModal(
                         }
                         IconButton(
                             onClick = {
-                                isFavorite = store.toggleFavorite(track)
-                                onFavoritesChanged()
+                                if (onFavoriteToggle != null) {
+                                    onFavoriteToggle()
+                                    isFavorite = store.isFavorite(track.id)
+                                } else {
+                                    isFavorite = store.toggleFavorite(track)
+                                    onFavoritesChanged()
+                                }
                             }
                         ) {
                             Icon(
@@ -566,19 +575,29 @@ fun ExpandedPlayerModal(
                         )
                     }
 
-                    IconButton(onClick = {}) {
+                    IconButton(onClick = onToggleRepeat) {
                         Icon(
-                            Icons.Default.Repeat,
-                            contentDescription = "Repeat",
-                            tint = palette.textSecondary
+                            imageVector = if (repeatMode == RepeatMode.ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                            contentDescription = "Repeat: $repeatMode",
+                            tint = when (repeatMode) {
+                                RepeatMode.OFF -> palette.textSecondary.copy(alpha = 0.35f)
+                                RepeatMode.ALL -> palette.primary
+                                RepeatMode.ONE -> palette.secondary
+                            },
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
 
                 // Footer
+                val repeatLabel = when (repeatMode) {
+                    RepeatMode.OFF -> "REPEAT OFF"
+                    RepeatMode.ALL -> "REPEAT ALL"
+                    RepeatMode.ONE -> "REPEAT ONE"
+                }
                 Text(
-                    text = if (isMixPlay) "MIX PLAY ACTIVE • AUTOPLAY NEXT QUEUE" else "HARDWARE AUDIO OFFLOAD • 32-BIT FLOAT STEREO",
-                    color = if (isMixPlay) palette.primary else palette.textSecondary.copy(alpha = 0.6f),
+                    text = if (isMixPlay) "MIX PLAY ACTIVE • $repeatLabel" else "$repeatLabel • 32-BIT FLOAT STEREO",
+                    color = if (isMixPlay || repeatMode != RepeatMode.OFF) palette.primary else palette.textSecondary.copy(alpha = 0.6f),
                     fontSize = 9.sp,
                     fontFamily = FontFamily.Monospace,
                     letterSpacing = 1.sp

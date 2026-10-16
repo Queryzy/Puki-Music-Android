@@ -2,6 +2,7 @@ package com.puki.nuclear.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.puki.nuclear.model.NetworkDownloadPreference
 import com.puki.nuclear.model.Track
 import org.json.JSONArray
 import org.json.JSONObject
@@ -10,7 +11,8 @@ import java.io.File
 data class Playlist(
     val id: String,
     val name: String,
-    val trackCount: Int
+    val trackCount: Int,
+    val autoDownload: Boolean = false
 )
 
 class LocalMusicStore(private val context: Context) {
@@ -326,21 +328,23 @@ class LocalMusicStore(private val context: Context) {
             val obj = array.getJSONObject(i)
             val playlistId = obj.getString("id")
             val tracks = getPlaylistTracks(playlistId)
+            val autoDl = obj.optBoolean("autoDownload", false)
             list.add(
                 Playlist(
                     id = playlistId,
                     name = obj.getString("name"),
-                    trackCount = tracks.size
+                    trackCount = tracks.size,
+                    autoDownload = autoDl
                 )
             )
         }
         return list
     }
 
-    fun createPlaylist(name: String): Playlist {
+    fun createPlaylist(name: String, autoDownload: Boolean = false): Playlist {
         val playlists = getPlaylists().toMutableList()
         val newId = "pl_${System.currentTimeMillis()}"
-        val newPl = Playlist(id = newId, name = name, trackCount = 0)
+        val newPl = Playlist(id = newId, name = name, trackCount = 0, autoDownload = autoDownload)
         playlists.add(newPl)
 
         val array = JSONArray()
@@ -348,10 +352,28 @@ class LocalMusicStore(private val context: Context) {
             val obj = JSONObject()
             obj.put("id", pl.id)
             obj.put("name", pl.name)
+            obj.put("autoDownload", pl.autoDownload)
             array.put(obj)
         }
         prefs.edit().putString(KEY_PLAYLISTS, array.toString()).apply()
         return newPl
+    }
+
+    fun setPlaylistAutoDownload(playlistId: String, autoDownload: Boolean) {
+        val playlists = getPlaylists()
+        val array = JSONArray()
+        for (pl in playlists) {
+            val obj = JSONObject()
+            obj.put("id", pl.id)
+            obj.put("name", pl.name)
+            obj.put("autoDownload", if (pl.id == playlistId) autoDownload else pl.autoDownload)
+            array.put(obj)
+        }
+        prefs.edit().putString(KEY_PLAYLISTS, array.toString()).apply()
+    }
+
+    fun isPlaylistAutoDownload(playlistId: String): Boolean {
+        return getPlaylists().firstOrNull { it.id == playlistId }?.autoDownload == true
     }
 
     fun deletePlaylist(playlistId: String) {
@@ -361,6 +383,7 @@ class LocalMusicStore(private val context: Context) {
             val obj = JSONObject()
             obj.put("id", pl.id)
             obj.put("name", pl.name)
+            obj.put("autoDownload", pl.autoDownload)
             array.put(obj)
         }
         prefs.edit()
@@ -425,6 +448,29 @@ class LocalMusicStore(private val context: Context) {
         prefs.edit().putString("${KEY_PL_TRACKS}_$playlistId", array.toString()).apply()
     }
 
+    // ── Auto-Download Preferences ──────────────────────────────────────────
+
+    fun isAutoDownloadLikedEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_DOWNLOAD_LIKED, false)
+    }
+
+    fun setAutoDownloadLikedEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_LIKED, enabled).apply()
+    }
+
+    fun getAutoDownloadNetworkPreference(): NetworkDownloadPreference {
+        val raw = prefs.getString(KEY_AUTO_DOWNLOAD_NETWORK, NetworkDownloadPreference.WIFI_ONLY.name)
+        return try {
+            NetworkDownloadPreference.valueOf(raw ?: NetworkDownloadPreference.WIFI_ONLY.name)
+        } catch (_: Exception) {
+            NetworkDownloadPreference.WIFI_ONLY
+        }
+    }
+
+    fun setAutoDownloadNetworkPreference(pref: NetworkDownloadPreference) {
+        prefs.edit().putString(KEY_AUTO_DOWNLOAD_NETWORK, pref.name).apply()
+    }
+
     // ── Theme Preference ───────────────────────────────────────────────────
 
     fun getThemeName(): String {
@@ -443,5 +489,7 @@ class LocalMusicStore(private val context: Context) {
         private const val KEY_SEARCHES = "recent_searches"
         private const val KEY_OFFLINE = "offline_tracks"
         private const val KEY_PLAY_HISTORY = "play_history"
+        private const val KEY_AUTO_DOWNLOAD_LIKED = "auto_download_liked"
+        private const val KEY_AUTO_DOWNLOAD_NETWORK = "auto_download_network"
     }
 }
