@@ -15,6 +15,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -2271,6 +2273,7 @@ fun SettingsTab(
     onClearAllOffline: () -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
+    var showChangelogDialog by remember { mutableStateOf(false) }
     var isAutoDlLiked by remember { mutableStateOf(store.isAutoDownloadLikedEnabled()) }
     var networkPref by remember { mutableStateOf(store.getAutoDownloadNetworkPreference()) }
 
@@ -2386,86 +2389,47 @@ fun SettingsTab(
             }
         }
 
-        // Catatan Rilis / Changelog
+        // Catatan Rilis / Changelog (Clickable clean row)
         item {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showChangelogDialog = true },
                 shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant.copy(alpha = 0.7f)),
                 border = BorderStroke(1.dp, palette.border.copy(alpha = 0.5f))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(Icons.Default.Notes, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
-                        Text(
-                            text = "CATATAN RILIS (CHANGELOG)",
-                            color = palette.textPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
+                        Icon(Icons.Default.Notes, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                        Column {
+                            Text(
+                                text = "CATATAN RILIS (CHANGELOG)",
+                                color = palette.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Ketuk untuk melihat detail pembaruan",
+                                color = palette.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
                     Text(
-                        text = "• v1.0.49: Multi-Tier Dual-Script Lyrics Search (Kanji + Romaji):\n" +
-                                "  - Jika lagu Jepang disimpan dengan judul Kanji/Kana, sistem otomatis mencari versi asli dan versi Romaji-nya sekaligus ke LRCLIB agar peluang lirik ditemukan naik drastis.\n\n" +
-                                "• v1.0.48: Real-Time Romaji Transliteration Toggle:\n" +
-                                "  - Tombol toggle [ 🔤 ROMAJI ] di tab LIRIK SYNC: otomatis mengubah lirik Jepang (Kanji & Kana) / Korea menjadi teks alfabet Latin (Romaji).\n\n" +
-                                "• v1.0.47: Universal Auto-Heal Metrics for Imported Playlists:\n" +
-                                "  - Menambahkan crawler background auto-heal metrik plays & badge POPULER untuk seluruh lagu di playlist yang diimpor dari Spotify/YouTube.\n\n" +
-                                "• v1.0.46: Auto Fallback Search & Auto-Skip Broken Tracks (1:1 YT Music):\n" +
-                                "  - Jika track dihapus/region lock (video not found), otomatis fallback search track alternatif di YT.\n" +
-                                "  - Jika lagu tetap unplayable di antrean, player otomatis auto-skip ke track berikutnya tanpa macet.\n\n" +
-                                "• v1.0.45: Fix OkHttpDataSource & Prioritas IPv4 Google Video CDN:\n" +
-                                "  - Ganti engine HTTP ExoPlayer ke OkHttpDataSource dengan IPv4-first DNS handler.\n" +
-                                "  - Eliminasi bug socket timeout IPv6 Android saat connect ke subdomain googlevideo.com.\n\n" +
-                                "• v1.0.44: Fix Cold-Start Playback Binding & Guaranteed Service Readiness:\n" +
-                                "  - Pastikan PlaybackService selalu ter-inisialisasi saat klik lagu pertama kali setelah update/cold boot.\n" +
-                                "  - Tambah auto-await loop (hingga 2 detik) untuk instansiasi ExoPlayer jika service belum selesai binding.\n\n" +
-                                "• v1.0.43: Fix CDN Streaming Handshake & Accurate Error Reporting:\n" +
-                                "  - Selaraskan User-Agent ExoPlayer & Accept-Language persis dengan NewPipe engine untuk mencegah HTTP 403 Forbidden di Google CDN.\n" +
-                                "  - Hentikan silent auto-advance jika stream gagal di-load agar status/pesan error eksplisit terlihat di banner UI.\n\n" +
-                                "• v1.0.42: Fitur Import Playlist YouTube Music & Spotify:\n" +
-                                "  - Tombol IMPORT di tab Playlist: Cukup tempel link playlist YT Music atau Spotify.\n" +
-                                "  - Ekstraksi otomatis seluruh tracklist & metadata ke playlist lokal Puki Music.\n" +
-                                "  - Opsi Auto-Download Offline saat impor selesai.\n\n" +
-                                "• v1.0.41: Algoritma Pencarian Album YouTube Music Presisi:\n" +
-                                "  - Query spesifik band discography & official full album (bukan keyword liar).\n" +
-                                "  - Hard exclusion: 100% buang musisi acak lain (dimitri vexus, Born for Revenge, dll).\n\n" +
-                                "• v1.0.40: Strict Relevance Filter untuk Pencarian Album:\n" +
-                                "  - Membuang 100% rilis acak orang lain yang hanya numpang kata kunci (misal: 'Reason for revenge', 'dimitri vexus').\n" +
-                                "  - Hanya meloloskan album resmi yang nama Uploader-nya cocok persis dengan artis atau judul album yang memuat nama artis.\n\n" +
-                                "• v1.0.39: Fix Search Album & Direct Album Viewer:\n" +
-                                "  - Memperbaiki akurasi pencarian Album: memprioritaskan album resmi rilis artis/label dan menyingkirkan playlist acak.\n" +
-                                "  - Klik kartu album di hasil pencarian kini langsung membuka daftar isi album yang dipilih (bukan me-reset ke profil artis umum).\n\n" +
-                                "• v1.0.38: Fix Layout Overflow & Parallel Downloader Probe:\n" +
-                                "  - Memperbaiki layout list favorit: baris artis/durasi dan plays dipisah rapi (durasi tidak patah vertikal lagi).\n" +
-                                "  - Probe range `bytes=0-0` untuk mengekstrak Content-Length asli Google CDN: Parallel downloader kini aktif 100% tanpa fallback sequential.\n\n" +
-                                "• v1.0.37: Auto-Backfill Plays/Badges untuk Lagu Lama:\n" +
-                                "  - Lagu yang sudah terlanjur di-like atau di-download sebelum update otomatis di-heal/dilengkapi angka plays & badgenya di background.\n\n" +
-                                "• v1.0.36: Universal Likes & Favorites Plays/Badges:\n" +
-                                "  - Lagu yang di-like (Favorit) dan Playlist otomatis menyimpan & menampilkan angka plays dan badge 🔥 POPULER.\n" +
-                                "  - Background metrics resolver otomatis melengkapi plays untuk lagu favorit lama.\n\n" +
-                                "• v1.0.35: Multi-thread Downloader & Official Music First:\n" +
-                                "  - Kecepatan unduhan multi-threaded chunk (4 koneksi simultan) naik drastis dari puluhan KB/s ke MB/s penuh.\n" +
-                                "  - Verifikasi integritas ukuran file & header audio anti-corrupt.\n" +
-                                "  - Plays, likes, dan badge 🔥 POPULER kini tersimpan permanen saat offline.\n" +
-                                "  - Pencarian memprioritaskan rilisan resmi YouTube Music / Official Artist Channel di urutan paling atas.\n\n" +
-                                "• v1.0.34: Album Tracks Live Plays Resolution:\n" +
-                               "  - Trek di dalam album kini otomatis menampilkan jumlah plays YouTube secara background asinkron.\n" +
-                               "  - Zero lag saat scrolling modal album dan view count otomatis update begitu data didapat.\n" +
-                               "• v1.0.33: YouTube Music Stats (Plays & Popularity Integration) & by Nands Branding.\n" +
-                               "• v1.0.32: Fix ANR Watchdog & Responsive Instant Playback.\n" +
-                               "• v1.0.31: Rename package com.puki.music & fix lock screen dropouts.\n" +
-                               "• v1.0.30: Production Keystore Signing (RSA 4096-bit).",
-                        color = palette.textSecondary,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
+                        text = "LIHAT ›",
+                        color = palette.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -3001,6 +2965,70 @@ fun SettingsTab(
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
                     Text("Batal", color = palette.textSecondary)
+                }
+            },
+            containerColor = palette.surfaceVariant
+        )
+    }
+
+    if (showChangelogDialog) {
+        AlertDialog(
+            onDismissRequest = { showChangelogDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Notes, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                    Text(
+                        "CATATAN RILIS LENGKAP",
+                        color = palette.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(380.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = "• v1.0.50: Clean Settings Changelog View:\n" +
+                                "  - Tampilan Catatan Rilis di Settings kini rapi dalam bentuk kartu ringkas; detail hanya muncul saat di-klik (modal pop-up).\n\n" +
+                                "• v1.0.49: Multi-Tier Dual-Script Lyrics Search (Kanji + Romaji):\n" +
+                                "  - Jika lagu Jepang disimpan dengan judul Kanji/Kana, sistem otomatis mencari versi asli dan versi Romaji-nya sekaligus ke LRCLIB agar peluang lirik ditemukan naik drastis.\n\n" +
+                                "• v1.0.48: Real-Time Romaji Transliteration Toggle:\n" +
+                                "  - Tombol toggle [ 🔤 ROMAJI ] di tab LIRIK SYNC: otomatis mengubah lirik Jepang (Kanji & Kana) / Korea menjadi teks alfabet Latin (Romaji).\n\n" +
+                                "• v1.0.47: Universal Auto-Heal Metrics for Imported Playlists:\n" +
+                                "  - Menambahkan crawler background auto-heal metrik plays & badge POPULER untuk seluruh lagu di playlist yang diimpor dari Spotify/YouTube.\n\n" +
+                                "• v1.0.46: Auto Fallback Search & Auto-Skip Broken Tracks (1:1 YT Music):\n" +
+                                "  - Jika track dihapus/region lock (video not found), otomatis fallback search track alternatif di YT.\n" +
+                                "  - Jika lagu tetap unplayable di antrean, player otomatis auto-skip ke track berikutnya tanpa macet.\n\n" +
+                                "• v1.0.45: Fix OkHttpDataSource & Prioritas IPv4 Google Video CDN:\n" +
+                                "  - Ganti engine HTTP ExoPlayer ke OkHttpDataSource dengan IPv4-first DNS handler.\n" +
+                                "  - Eliminasi bug socket timeout IPv6 Android saat connect ke subdomain googlevideo.com.\n\n" +
+                                "• v1.0.44: Fix Cold-Start Playback Binding & Guaranteed Service Readiness.\n\n" +
+                                "• v1.0.43: Fix CDN Streaming Handshake & Accurate Error Reporting.\n\n" +
+                                "• v1.0.42: Fitur Import Playlist YouTube Music & Spotify.\n\n" +
+                                "• v1.0.41: Algoritma Pencarian Album YouTube Music Presisi.\n\n" +
+                                "• v1.0.40: Strict Relevance Filter untuk Pencarian Album.\n\n" +
+                                "• v1.0.35: Multi-thread Downloader & Official Music First.\n\n" +
+                                "• v1.0.30: Production Keystore Signing (RSA 4096-bit).",
+                        color = palette.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showChangelogDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                ) {
+                    Text("TUTUP", color = palette.background, fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = palette.surfaceVariant
