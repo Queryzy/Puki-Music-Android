@@ -2349,7 +2349,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.40: Strict Relevance Filter untuk Pencarian Album:\n" +
+                        text = "• v1.0.41: Algoritma Pencarian Album YouTube Music Presisi:\n" +
+                                "  - Query spesifik band discography & official full album (bukan keyword liar).\n" +
+                                "  - Hard exclusion: 100% buang musisi acak lain (dimitri vexus, Born for Revenge, dll).\n\n" +
+                                "• v1.0.40: Strict Relevance Filter untuk Pencarian Album:\n" +
                                 "  - Membuang 100% rilis acak orang lain yang hanya numpang kata kunci (misal: 'Reason for revenge', 'dimitri vexus').\n" +
                                 "  - Hanya meloloskan album resmi yang nama Uploader-nya cocok persis dengan artis atau judul album yang memuat nama artis.\n\n" +
                                 "• v1.0.39: Fix Search Album & Direct Album Viewer:\n" +

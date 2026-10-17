@@ -81,54 +81,53 @@ object StreamResolver {
 
             val allItems = mutableListOf<PlaylistInfoItem>()
 
-            // 1. YouTube Music Albums query
-            try {
-                val extractor = service.getSearchExtractor(cleanQuery, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS), null)
-                extractor.fetchPage()
-                allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
-            } catch (_: Exception) {}
+            // 1. Primary Strategy: Search playlists explicitly querying artist + full album / discography
+            val queries = listOf(
+                "\"$cleanQuery\" full album",
+                "\"$cleanQuery\" album",
+                cleanQuery
+            )
 
-            // 2. Query focused on official full album playlists
-            try {
-                val queryAlbum = "\"$cleanQuery\" album"
-                val extractor = service.getSearchExtractor(queryAlbum, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
-                extractor.fetchPage()
-                allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
-            } catch (_: Exception) {}
+            for (q in queries) {
+                try {
+                    val extractor = service.getSearchExtractor(q, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
+                    extractor.fetchPage()
+                    allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
+                    if (allItems.size >= 10) break
+                } catch (_: Exception) {}
+            }
 
-            // 3. Fallback standard playlist query
+            // 2. Secondary fallback: MUSIC_ALBUMS filter
             if (allItems.isEmpty()) {
                 try {
-                    val queryFallback = "$cleanQuery full album"
-                    val extractor = service.getSearchExtractor(queryFallback, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
+                    val extractor = service.getSearchExtractor(cleanQuery, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS), null)
                     extractor.fetchPage()
                     allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
                 } catch (_: Exception) {}
             }
 
-            // Scoring system:
-            // Must prioritize albums where UPLOADER matches artist name, or title explicitly contains artist + album
-            val scoredAlbums = allItems.mapNotNull { item ->
+            // 3. Strict Relevance & Noise Elimination
+            // To be an authentic album for "for Revenge":
+            // - The title or uploader MUST contain the exact artist name (e.g. "for revenge")
+            // - Titles that merely contain common English words like "revenge" but by other artists (e.g. "dimitri vexus", "Reason for Revenge", "Born for Revenge") MUST BE DISCARDED.
+            val filtered = allItems.mapNotNull { item ->
                 val uploader = item.uploaderName.orEmpty().lowercase()
                 val title = item.name.orEmpty().lowercase()
 
-                val isExactUploader = uploader == targetLower || uploader == "$targetLower - topic"
-                val isUploaderContains = uploader.contains(targetLower)
-                val isTitleContainsArtist = title.contains(targetLower)
-                val isTopic = uploader.endsWith("- topic") || uploader.endsWith("topic")
-                val isOfficialLabel = uploader.contains("records") || uploader.contains("entertainment") || uploader.contains("music")
+                val uploaderMatchesArtist = uploader.contains(targetLower) || uploader.startsWith(targetLower)
+                val titleContainsArtistExact = title.contains(targetLower)
 
-                // Filter out complete noise: if neither uploader nor title contains the artist query, drop it
-                if (!isUploaderContains && !isTitleContainsArtist) {
+                // Hard exclusion: If neither the uploader nor the title contains the complete artist query string, drop it immediately!
+                if (!uploaderMatchesArtist && !titleContainsArtistExact) {
                     return@mapNotNull null
                 }
 
                 var score = 0
-                if (isExactUploader) score += 50
-                if (isTopic) score += 30
-                if (isUploaderContains) score += 20
-                if (isOfficialLabel && isTitleContainsArtist) score += 30
-                if (title.contains("album") || title.contains("ep") || title.contains("babak")) score += 15
+                if (uploader == targetLower || uploader == "$targetLower - topic") score += 100
+                if (uploaderMatchesArtist) score += 60
+                if (titleContainsArtistExact) score += 50
+                if (title.contains("full album") || title.contains("album") || title.contains("babak")) score += 30
+                if (uploader.contains("records") || uploader.contains("entertainment") || uploader.contains("sony")) score += 20
 
                 item to score
             }.sortedWith(
@@ -138,14 +137,18 @@ object StreamResolver {
 
             val results = mutableListOf<Album>()
             val seen = mutableSetOf<String>()
-            for (item in scoredAlbums) {
+            for (item in filtered) {
                 val normUrl = item.url.trim()
                 if (seen.add(normUrl)) {
                     results.add(
                         Album(
                             id = item.url,
                             title = item.name,
-                            artist = item.uploaderName.orEmpty().removeSuffix(" - Topic").trim().ifBlank { cleanQuery },
+                            artist = if (item.uploaderName.orEmpty().lowercase().contains(targetLower)) {
+                                item.uploaderName.orEmpty().removeSuffix(" - Topic").trim()
+                            } else {
+                                cleanQuery
+                            },
                             trackCount = item.streamCount,
                             thumbnailUrl = item.thumbnails.lastOrNull()?.url.orEmpty(),
                             url = item.url
