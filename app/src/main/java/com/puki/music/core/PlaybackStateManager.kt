@@ -319,6 +319,16 @@ object PlaybackStateManager {
                     _isResolvingStream.value = false
                     Log.e(TAG, "Stream failed for track ${track.title}: ${err.message}", err)
                     _errorMessage.value = "Gagal memuat stream audio: ${err.message}"
+
+                    // 1:1 YT Music Behavior: Auto skip to next track in queue if track is deleted/region blocked/broken
+                    val queue = _currentQueue.value
+                    if (queue.size > 1) {
+                        val curIdx = queue.indexOfFirst { it.id == track.id }
+                        if (curIdx != -1 && curIdx < queue.size - 1) {
+                            Log.i(TAG, "Auto-skipping broken track '${track.title}' to next track...")
+                            playNext()
+                        }
+                    }
                 }
             }
         }

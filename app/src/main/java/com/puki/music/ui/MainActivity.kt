@@ -2399,7 +2399,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.45: Fix OkHttpDataSource & Prioritas IPv4 Google Video CDN:\n" +
+                        text = "• v1.0.46: Auto Fallback Search & Auto-Skip Broken Tracks (1:1 YT Music):\n" +
+                                "  - Jika track dihapus/region lock (video not found), otomatis fallback search track alternatif di YT.\n" +
+                                "  - Jika lagu tetap unplayable di antrean, player otomatis auto-skip ke track berikutnya tanpa macet.\n\n" +
+                                "• v1.0.45: Fix OkHttpDataSource & Prioritas IPv4 Google Video CDN:\n" +
                                 "  - Ganti engine HTTP ExoPlayer ke OkHttpDataSource dengan IPv4-first DNS handler.\n" +
                                 "  - Eliminasi bug socket timeout IPv6 Android saat connect ke subdomain googlevideo.com.\n\n" +
                                 "• v1.0.44: Fix Cold-Start Playback Binding & Guaranteed Service Readiness:\n" +

@@ -2,6 +2,7 @@ package com.puki.music.core
 
 import com.puki.music.model.Album
 import com.puki.music.model.Track
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.ServiceList
@@ -12,6 +13,7 @@ import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 
 object StreamResolver {
+    private const val TAG = "StreamResolver"
 
     suspend fun getDashboardTracks(querySeed: String? = null): Result<List<Track>> = withContext(Dispatchers.IO) {
         val q = if (!querySeed.isNullOrBlank()) querySeed else "Trending Musik Indonesia Populer"
@@ -228,13 +230,35 @@ object StreamResolver {
             val result = runCatching {
                 val service = ServiceList.YouTube
                 val cleanUrl = "https://www.youtube.com/watch?v=$videoId"
-                val streamExtractor = service.getStreamExtractor(cleanUrl)
-                streamExtractor.fetchPage()
+                var extractor = service.getStreamExtractor(cleanUrl)
+                try {
+                    extractor.fetchPage()
+                } catch (e: Exception) {
+                    val msg = e.message ?: ""
+                    // Video ID deleted / region locked / private: fallback search alternative official track on YT
+                    if (e is org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException ||
+                        msg.contains("not available", ignoreCase = true) ||
+                        msg.contains("not found", ignoreCase = true) ||
+                        msg.contains("private", ignoreCase = true)
+                    ) {
+                        Log.w(TAG, "Video ID $videoId unavailable on YT ($msg), attempting dynamic query search fallback...")
+                        val altTrack = searchTracks(videoId).getOrNull()?.firstOrNull()
+                        if (altTrack != null && altTrack.id != videoId && altTrack.id.isNotBlank()) {
+                            val altUrl = "https://www.youtube.com/watch?v=${altTrack.id}"
+                            extractor = service.getStreamExtractor(altUrl)
+                            extractor.fetchPage()
+                        } else {
+                            throw e
+                        }
+                    } else {
+                        throw e
+                    }
+                }
 
-                val views = try { streamExtractor.viewCount } catch (_: Exception) { 0L }
-                val likes = try { streamExtractor.likeCount } catch (_: Exception) { 0L }
+                val views = try { extractor.viewCount } catch (_: Exception) { 0L }
+                val likes = try { extractor.likeCount } catch (_: Exception) { 0L }
 
-                val audioStreams = streamExtractor.audioStreams
+                val audioStreams = extractor.audioStreams
                 if (audioStreams.isNotEmpty()) {
                     val sortedStreams = audioStreams.sortedWith(
                         compareByDescending<AudioStream> { stream ->
@@ -257,7 +281,7 @@ object StreamResolver {
                     }
                 }
 
-                val videoStreams = streamExtractor.videoStreams
+                val videoStreams = extractor.videoStreams
                 if (videoStreams.isNotEmpty()) {
                     val fallbackStream = videoStreams.firstOrNull { it.url != null || it.content != null }
                     if (fallbackStream != null) {
