@@ -99,7 +99,12 @@ object OfflineManager {
         onProgress: (Int) -> Unit = {}
     ): Result<Track> = withContext(Dispatchers.IO) {
         runCatching {
-            val streamUrl = StreamResolver.resolveAudioStream(track.id).getOrThrow()
+            val detailedRes = StreamResolver.resolveAudioStreamDetailed(track.id).getOrThrow()
+            val streamUrl = detailedRes.streamUrl
+            val views = if (track.viewCount > 0) track.viewCount else detailedRes.viewCount
+            val likes = if (track.likeCount > 0) track.likeCount else detailedRes.likeCount
+            val trackWithMetrics = track.copy(viewCount = views, likeCount = likes)
+
             val storageDir = getStorageDir(context)
             val baseName = sanitizeFilename(track.id)
             val isOpus = streamUrl.contains("opus") || streamUrl.contains("mime=audio%2Fwebm")
@@ -107,19 +112,46 @@ object OfflineManager {
             val targetFile = File(storageDir, "$baseName.$ext")
             val partFile = File(storageDir, "$baseName.$ext.part")
 
-            // Check if partial download already exists for resuming
-            val existingBytes = if (partFile.exists() && partFile.length() > 0) partFile.length() else 0L
+            // Multi-threaded parallel chunks with automatic sequential fallback & integrity checks
+            var downloadSuccess = false
+            try {
+                // Determine content-length for parallel chunks
+                val headReq = Request.Builder()
+                    .url(streamUrl as String)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .head()
+                    .build()
+                val headResp = httpClient.newCall(headReq).execute()
+                val totalBytes = headResp.body?.contentLength() ?: -1L
+                headResp.close()
 
-            // Clean sequential download with HTTP 206 Range resume support
-            // Writes continuously into FileOutputStream to ensure bit-perfect audio stream without zero-gaps
-            downloadSequential(
-                streamUrl = streamUrl,
-                track = track,
-                partFile = partFile,
-                targetFile = targetFile,
-                existingBytes = existingBytes,
-                onProgress = onProgress
-            )
+                if (totalBytes > 256 * 1024L) {
+                    downloadParallelChunks(
+                        streamUrl = streamUrl,
+                        partFile = partFile,
+                        targetFile = targetFile,
+                        totalBytes = totalBytes,
+                        onProgress = onProgress
+                    )
+                    downloadSuccess = true
+                }
+            } catch (e: Exception) {
+                // If parallel download fails or is refused, safely clean partial and fallback to sequential
+                if (partFile.exists()) partFile.delete()
+                downloadSuccess = false
+            }
+
+            if (!downloadSuccess || !targetFile.exists() || targetFile.length() < 64 * 1024L) {
+                val existingBytes = if (partFile.exists() && partFile.length() > 0) partFile.length() else 0L
+                downloadSequential(
+                    streamUrl = streamUrl,
+                    track = trackWithMetrics,
+                    partFile = partFile,
+                    targetFile = targetFile,
+                    existingBytes = existingBytes,
+                    onProgress = onProgress
+                )
+            }
 
             onProgress(100)
 
@@ -143,7 +175,7 @@ object OfflineManager {
                 } catch (_: Exception) {}
             }
 
-            val offlineTrack = track.copy(
+            val offlineTrack = trackWithMetrics.copy(
                 localFilePath = targetFile.absolutePath,
                 thumbnailUrl = localThumb
             )
@@ -232,6 +264,12 @@ object OfflineManager {
             jobs.awaitAll()
         } finally {
             try { raf.close() } catch (_: Exception) {}
+        }
+
+        // Integrity verification before publishing
+        if (partFile.length() < totalBytes || partFile.length() < 64 * 1024L) {
+            partFile.delete()
+            throw IllegalStateException("File integritas gagal: ukuran tidak lengkap (${partFile.length()} / $totalBytes)")
         }
 
         if (targetFile.exists()) targetFile.delete()

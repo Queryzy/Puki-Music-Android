@@ -355,6 +355,8 @@ class LocalMusicStore(private val context: Context) {
             obj.put("duration", t.durationSeconds)
             obj.put("thumbnailUrl", t.thumbnailUrl)
             obj.put("localFilePath", t.localFilePath)
+            obj.put("viewCount", t.viewCount)
+            obj.put("likeCount", t.likeCount)
             array.put(obj)
         }
         prefs.edit().putString(KEY_OFFLINE, array.toString()).apply()
@@ -378,7 +380,9 @@ class LocalMusicStore(private val context: Context) {
                         artist = obj.getString("artist"),
                         durationSeconds = obj.getLong("duration"),
                         thumbnailUrl = obj.getString("thumbnailUrl"),
-                        localFilePath = filePath
+                        localFilePath = filePath,
+                        viewCount = obj.optLong("viewCount", 0L),
+                        likeCount = obj.optLong("likeCount", 0L)
                     )
                 )
             }

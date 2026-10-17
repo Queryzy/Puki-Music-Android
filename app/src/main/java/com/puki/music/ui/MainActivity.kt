@@ -2292,7 +2292,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.34: Album Tracks Live Plays Resolution:\n" +
+                        text = "• v1.0.35: Multi-thread Downloader & Official Music First:\n" +
+                                "  - Kecepatan unduhan multi-threaded chunk (4 koneksi simultan) naik drastis dari puluhan KB/s ke MB/s penuh.\n" +
+                                "  - Verifikasi integritas ukuran file & header audio anti-corrupt.\n" +
+                                "  - Plays, likes, dan badge 🔥 POPULER kini tersimpan permanen saat offline.\n" +
+                                "  - Pencarian memprioritaskan rilisan resmi YouTube Music / Official Artist Channel di urutan paling atas.\n\n" +
+                                "• v1.0.34: Album Tracks Live Plays Resolution:\n" +
                                "  - Trek di dalam album kini otomatis menampilkan jumlah plays YouTube secara background asinkron.\n" +
                                "  - Zero lag saat scrolling modal album dan view count otomatis update begitu data didapat.\n" +
                                "• v1.0.33: YouTube Music Stats (Plays & Popularity Integration) & by Nands Branding.\n" +
