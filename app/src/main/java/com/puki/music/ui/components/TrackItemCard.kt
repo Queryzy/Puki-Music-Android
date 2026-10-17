@@ -86,6 +86,7 @@ fun TrackItemCard(
         }
 
         Column(modifier = Modifier.weight(1f)) {
+            // ── Line 1: Judul Lagu ──
             Text(
                 text = track.title,
                 color = if (isSelected) palette.tertiary else palette.textPrimary,
@@ -95,6 +96,8 @@ fun TrackItemCard(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(2.dp))
+
+            // ── Line 2: Artis & Durasi ──
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -119,43 +122,44 @@ fun TrackItemCard(
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = if (onArtistClick != null) {
-                        Modifier.clickable { onArtistClick(track.artist) }
-                    } else Modifier
+                    modifier = (if (onArtistClick != null) Modifier.clickable { onArtistClick(track.artist) } else Modifier).weight(1f, fill = false)
                 )
-                if (track.formattedViews != null) {
-                    Text(
-                        text = "•",
-                        color = palette.textSecondary,
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = "${track.formattedViews} plays",
-                        color = palette.primary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
                 Text(
                     text = "• ${track.formattedDuration}",
                     color = palette.textSecondary,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
-            if (track.isPopular || playCount > 0 || (fileSizeText != null && isOffline)) {
+            // ── Line 3: Plays Count & Badges (Populer / Size / PlayCount) ──
+            val hasMetrics = track.formattedViews != null || track.isPopular || playCount > 0 || (fileSizeText != null && isOffline)
+            if (hasMetrics) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    if (track.formattedViews != null) {
+                        Text(
+                            text = "${track.formattedViews} plays",
+                            color = palette.primary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                     if (track.isPopular) {
                         Text(
                             text = "🔥 POPULER",
                             color = palette.secondary,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     if (playCount > 0) {
@@ -164,7 +168,9 @@ fun TrackItemCard(
                             color = palette.primary,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     if (fileSizeText != null && isOffline) {
@@ -172,7 +178,9 @@ fun TrackItemCard(
                             text = "💾 $fileSizeText",
                             color = palette.success.copy(alpha = 0.8f),
                             fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

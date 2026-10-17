@@ -2342,7 +2342,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.37: Auto-Backfill Plays/Badges untuk Lagu Lama:\n" +
+                        text = "• v1.0.38: Fix Layout Overflow & Parallel Downloader Probe:\n" +
+                                "  - Memperbaiki layout list favorit: baris artis/durasi dan plays dipisah rapi (durasi tidak patah vertikal lagi).\n" +
+                                "  - Probe range `bytes=0-0` untuk mengekstrak Content-Length asli Google CDN: Parallel downloader kini aktif 100% tanpa fallback sequential.\n\n" +
+                                "• v1.0.37: Auto-Backfill Plays/Badges untuk Lagu Lama:\n" +
                                 "  - Lagu yang sudah terlanjur di-like atau di-download sebelum update otomatis di-heal/dilengkapi angka plays & badgenya di background.\n\n" +
                                 "• v1.0.36: Universal Likes & Favorites Plays/Badges:\n" +
                                 "  - Lagu yang di-like (Favorit) dan Playlist otomatis menyimpan & menampilkan angka plays dan badge 🔥 POPULER.\n" +

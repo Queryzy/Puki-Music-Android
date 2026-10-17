@@ -115,15 +115,19 @@ object OfflineManager {
             // Multi-threaded parallel chunks with automatic sequential fallback & integrity checks
             var downloadSuccess = false
             try {
-                // Determine content-length for parallel chunks
-                val headReq = Request.Builder()
-                    .url(streamUrl as String)
+                // Determine content-length using initial probe range (Googlevideo CDN rejects HEAD)
+                val probeReq = Request.Builder()
+                    .url(streamUrl)
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    .head()
+                    .header("Range", "bytes=0-0")
                     .build()
-                val headResp = httpClient.newCall(headReq).execute()
-                val totalBytes = headResp.body?.contentLength() ?: -1L
-                headResp.close()
+                val probeResp = httpClient.newCall(probeReq).execute()
+                val totalBytes = if (probeResp.isSuccessful && probeResp.code == 206) {
+                    probeResp.header("Content-Range")?.substringAfter("/")?.toLongOrNull() ?: -1L
+                } else {
+                    probeResp.body?.contentLength() ?: -1L
+                }
+                probeResp.close()
 
                 if (totalBytes > 256 * 1024L) {
                     downloadParallelChunks(
