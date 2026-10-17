@@ -20,8 +20,8 @@ android {
         applicationId = "com.puki.music"
         minSdk = 26
         targetSdk = 34
-        versionCode = 45
-        versionName = "1.0.44"
+        versionCode = 46
+        versionName = "1.0.45"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -105,6 +105,7 @@ dependencies {
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("androidx.media3:media3-datasource:$media3Version")
+    implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
     implementation("androidx.media3:media3-database:$media3Version")
 
     // YouTube / SoundCloud Extractor (Pure stream, zero ads)

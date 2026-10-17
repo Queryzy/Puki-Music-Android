@@ -19,6 +19,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -105,18 +106,26 @@ class PlaybackService : MediaSessionService() {
             .setBackBuffer(30_000, true)
             .build()
 
-        // Match exact User-Agent and headers of NewPipe client to guarantee 0 handshake drops from googlevideo CDN
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        // Robust HTTP DataSource powered by OkHttp with custom DNS & IPv4-first resolution
+        val exoHttpClient = okhttp3.OkHttpClient.Builder()
+            .dns(object : okhttp3.Dns {
+                override fun lookup(hostname: String): List<java.net.InetAddress> {
+                    return try {
+                        val addresses = okhttp3.Dns.SYSTEM.lookup(hostname)
+                        addresses.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
+                    } catch (e: Exception) {
+                        okhttp3.Dns.SYSTEM.lookup(hostname)
+                    }
+                }
+            })
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .followRedirects(true)
+            .build()
+
+        val httpDataSourceFactory = OkHttpDataSource.Factory(exoHttpClient)
             .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-            .setDefaultRequestProperties(
-                mapOf(
-                    "Accept-Language" to "en-US,en;q=0.9",
-                    "Range" to "bytes=0-"
-                )
-            )
-            .setConnectTimeoutMs(30_000)
-            .setReadTimeoutMs(45_000)
-            .setAllowCrossProtocolRedirects(true)
 
         // ExoPlayer Disk Cache (512 MB LRU Cache) to prevent streaming drops during mobile network latency spikes
         val simpleCache = CacheHolder.getCache(this)

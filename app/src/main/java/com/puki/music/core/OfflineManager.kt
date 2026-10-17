@@ -46,6 +46,16 @@ object OfflineManager {
     val activeBatch = mutableStateOf<BatchProgressState?>(null)
 
     private val httpClient = OkHttpClient.Builder()
+        .dns(object : okhttp3.Dns {
+            override fun lookup(hostname: String): List<java.net.InetAddress> {
+                return try {
+                    val addresses = okhttp3.Dns.SYSTEM.lookup(hostname)
+                    addresses.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
+                } catch (e: Exception) {
+                    okhttp3.Dns.SYSTEM.lookup(hostname)
+                }
+            }
+        })
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)

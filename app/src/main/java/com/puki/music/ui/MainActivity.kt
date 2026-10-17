@@ -2399,7 +2399,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.44: Fix Cold-Start Playback Binding & Guaranteed Service Readiness:\n" +
+                        text = "• v1.0.45: Fix OkHttpDataSource & Prioritas IPv4 Google Video CDN:\n" +
+                                "  - Ganti engine HTTP ExoPlayer ke OkHttpDataSource dengan IPv4-first DNS handler.\n" +
+                                "  - Eliminasi bug socket timeout IPv6 Android saat connect ke subdomain googlevideo.com.\n\n" +
+                                "• v1.0.44: Fix Cold-Start Playback Binding & Guaranteed Service Readiness:\n" +
                                 "  - Pastikan PlaybackService selalu ter-inisialisasi saat klik lagu pertama kali setelah update/cold boot.\n" +
                                 "  - Tambah auto-await loop (hingga 2 detik) untuk instansiasi ExoPlayer jika service belum selesai binding.\n\n" +
                                 "• v1.0.43: Fix CDN Streaming Handshake & Accurate Error Reporting:\n" +
