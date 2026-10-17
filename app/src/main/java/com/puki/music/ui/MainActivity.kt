@@ -155,6 +155,7 @@ fun NuclearMainScreen(
     var playlistToAddTo by remember { mutableStateOf<Track?>(null) }
     var activePlaylist by remember { mutableStateOf<Playlist?>(null) }
     var viewingArtist by remember { mutableStateOf<String?>(null) }
+    var viewingAlbum by remember { mutableStateOf<Album?>(null) }
 
     // Reactive data lists
     var favoritesList by remember { mutableStateOf(store.getFavorites()) }
@@ -609,20 +610,21 @@ fun NuclearMainScreen(
                     onArtistClick = { viewingArtist = it }
                 )
                 1 -> SearchTab(
-                    palette = palette,
-                    activeTrack = activeTrack,
-                    store = store,
-                    downloadingIds = downloadingTrackIds,
-                    favoriteIds = favoriteTrackIds,
-                    offlineTrackIds = offlineTrackIds,
-                    onTrackSelected = { track, list -> playTrack(track, list) },
-                    onMixPlayClick = { list -> startMixPlay(list) },
-                    onDownloadClick = { toggleOfflineDownload(it) },
-                    onAddToPlaylist = { playlistToAddTo = it },
-                    onFavoritesChanged = { favoritesList = store.getFavorites() },
-                    onFavoriteToggle = { handleFavoriteToggle(it) },
-                    onArtistClick = { viewingArtist = it }
-                )
+     palette = palette,
+     activeTrack = activeTrack,
+     store = store,
+     downloadingIds = downloadingTrackIds,
+     favoriteIds = favoriteTrackIds,
+     offlineTrackIds = offlineTrackIds,
+     onTrackSelected = { track, list -> playTrack(track, list) },
+     onMixPlayClick = { list -> startMixPlay(list) },
+     onDownloadClick = { toggleOfflineDownload(it) },
+     onAddToPlaylist = { playlistToAddTo = it },
+     onFavoritesChanged = { favoritesList = store.getFavorites() },
+     onFavoriteToggle = { handleFavoriteToggle(it) },
+     onArtistClick = { viewingArtist = it },
+     onAlbumClick = { viewingAlbum = it }
+ )
                 2 -> LibraryTab(
                     favorites = favoritesList,
                     offlineTracks = offlineTracks,
@@ -818,9 +820,10 @@ fun NuclearMainScreen(
         )
     }
 
-    if (viewingArtist != null) {
+    if (viewingArtist != null || viewingAlbum != null) {
         ArtistAlbumModal(
-            artistName = viewingArtist!!,
+            artistName = viewingAlbum?.artist ?: viewingArtist!!,
+            initialAlbum = viewingAlbum,
             palette = palette,
             store = store,
             downloadingIds = downloadingTrackIds,
@@ -833,7 +836,10 @@ fun NuclearMainScreen(
             onDownloadAlbum = { tracks, name -> downloadPlaylist(tracks, name) },
             onAddToPlaylist = { playlistToAddTo = it },
             onFavoriteToggle = { handleFavoriteToggle(it) },
-            onClose = { viewingArtist = null }
+            onClose = {
+                viewingArtist = null
+                viewingAlbum = null
+            }
         )
     }
 
@@ -1291,7 +1297,8 @@ fun SearchTab(
     onAddToPlaylist: (Track) -> Unit,
     onFavoritesChanged: () -> Unit,
     onFavoriteToggle: ((Track) -> Unit)? = null,
-    onArtistClick: (String) -> Unit
+    onArtistClick: (String) -> Unit,
+    onAlbumClick: (Album) -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
     var searchMode by remember { mutableIntStateOf(0) } // 0 = Lagu, 1 = Album & EP
@@ -1483,7 +1490,7 @@ fun SearchTab(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onArtistClick(album.artist) },
+                                .clickable { onAlbumClick(album) },
                             shape = RoundedCornerShape(8.dp),
                             colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
                             border = androidx.compose.foundation.BorderStroke(1.dp, palette.border)
@@ -2342,7 +2349,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.38: Fix Layout Overflow & Parallel Downloader Probe:\n" +
+                        text = "• v1.0.39: Fix Search Album & Direct Album Viewer:\n" +
+                                "  - Memperbaiki akurasi pencarian Album: memprioritaskan album resmi rilis artis/label dan menyingkirkan playlist acak.\n" +
+                                "  - Klik kartu album di hasil pencarian kini langsung membuka daftar isi album yang dipilih (bukan me-reset ke profil artis umum).\n\n" +
+                                "• v1.0.38: Fix Layout Overflow & Parallel Downloader Probe:\n" +
                                 "  - Memperbaiki layout list favorit: baris artis/durasi dan plays dipisah rapi (durasi tidak patah vertikal lagi).\n" +
                                 "  - Probe range `bytes=0-0` untuk mengekstrak Content-Length asli Google CDN: Parallel downloader kini aktif 100% tanpa fallback sequential.\n\n" +
                                 "• v1.0.37: Auto-Backfill Plays/Badges untuk Lagu Lama:\n" +

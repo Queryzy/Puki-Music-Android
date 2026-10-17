@@ -76,53 +76,62 @@ object StreamResolver {
     suspend fun searchAlbums(artistOrQuery: String): Result<List<Album>> = withContext(Dispatchers.IO) {
         runCatching {
             val service = ServiceList.YouTube
-            val query = artistOrQuery.trim()
+            val cleanQuery = artistOrQuery.trim()
 
-            // Try YouTube Music Albums filter first for 100% official discography
-            val searchExtractor: SearchExtractor = try {
-                service.getSearchExtractor(query, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS), null)
-            } catch (_: Exception) {
-                val fallbackQuery = if (query.contains("album", ignoreCase = true)) query else "$query full album"
-                service.getSearchExtractor(fallbackQuery, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
+            // 1. First attempt: Search with exact YouTube Music Albums filter
+            val items = mutableListOf<PlaylistInfoItem>()
+            try {
+                val extractor = service.getSearchExtractor(cleanQuery, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS), null)
+                extractor.fetchPage()
+                items.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
+            } catch (_: Exception) {}
+
+            // 2. Fallback: If MUSIC_ALBUMS returns zero items, search playlists specifically for albums
+            if (items.isEmpty()) {
+                val queryWithAlbum = if (cleanQuery.contains("album", ignoreCase = true)) cleanQuery else "$cleanQuery album"
+                try {
+                    val extractor = service.getSearchExtractor(queryWithAlbum, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
+                    extractor.fetchPage()
+                    items.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
+                } catch (_: Exception) {}
             }
-            searchExtractor.fetchPage()
 
-            val rawItems = searchExtractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
-            val candidates = if (rawItems.isEmpty()) {
-                val fallbackQuery = if (query.contains("album", ignoreCase = true)) query else "$query full album"
-                val fallbackExtractor = service.getSearchExtractor(fallbackQuery, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
-                fallbackExtractor.fetchPage()
-                fallbackExtractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
-            } else {
-                rawItems
-            }
-
-            // Prioritize Official Artist Channels & Releases over random user playlists
-            val sortedAlbums = candidates.sortedWith(
+            // 3. Filter out generic random playlists and prioritize Official Albums
+            val targetLower = cleanQuery.lowercase()
+            val sortedAlbums = items.sortedWith(
                 compareByDescending<PlaylistInfoItem> { item ->
                     val uploader = item.uploaderName.orEmpty().lowercase()
+                    val title = item.name.orEmpty().lowercase()
                     val isTopic = uploader.endsWith("- topic") || uploader.endsWith("topic")
                     val isOfficial = uploader.contains("official") || uploader.contains("records")
+                    val titleMatchesQuery = title.contains(targetLower) || targetLower.contains(title)
+                    val uploaderMatchesQuery = uploader.contains(targetLower)
                     when {
-                        isTopic -> 3
-                        isOfficial -> 2
+                        isTopic && (titleMatchesQuery || uploaderMatchesQuery) -> 4
+                        isOfficial && (titleMatchesQuery || uploaderMatchesQuery) -> 3
+                        isTopic -> 2
+                        isOfficial -> 1
                         else -> 0
                     }
                 }.thenByDescending { it.streamCount }
             )
 
             val results = mutableListOf<Album>()
+            val seen = mutableSetOf<String>()
             for (item in sortedAlbums) {
-                results.add(
-                    Album(
-                        id = item.url,
-                        title = item.name,
-                        artist = item.uploaderName.orEmpty().removeSuffix(" - Topic").trim().ifBlank { artistOrQuery },
-                        trackCount = item.streamCount,
-                        thumbnailUrl = item.thumbnails.lastOrNull()?.url.orEmpty(),
-                        url = item.url
+                val normUrl = item.url.trim()
+                if (seen.add(normUrl)) {
+                    results.add(
+                        Album(
+                            id = item.url,
+                            title = item.name,
+                            artist = item.uploaderName.orEmpty().removeSuffix(" - Topic").trim().ifBlank { cleanQuery },
+                            trackCount = item.streamCount,
+                            thumbnailUrl = item.thumbnails.lastOrNull()?.url.orEmpty(),
+                            url = item.url
+                        )
                     )
-                )
+                }
             }
             results
         }

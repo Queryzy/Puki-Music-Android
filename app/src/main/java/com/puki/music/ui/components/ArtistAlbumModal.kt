@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ArtistAlbumModal(
     artistName: String,
+    initialAlbum: Album? = null,
     palette: NuclearPalette,
     store: LocalMusicStore,
     downloadingIds: List<String>,
@@ -57,38 +58,16 @@ fun ArtistAlbumModal(
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Albums, 1 = Top Tracks
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var topTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var isLoadingAlbums by remember { mutableStateOf(true) }
+    var isLoadingAlbums by remember { mutableStateOf(initialAlbum == null) }
     var isLoadingTracks by remember { mutableStateOf(false) }
 
     // Active expanded album details
-    var selectedAlbum by remember { mutableStateOf<Album?>(null) }
+    var selectedAlbum by remember { mutableStateOf<Album?>(initialAlbum) }
     var albumTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var isLoadingAlbumTracks by remember { mutableStateOf(false) }
+    var isLoadingAlbumTracks by remember { mutableStateOf(initialAlbum != null) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-
-    // Load albums on launch
-    LaunchedEffect(artistName) {
-        isLoadingAlbums = true
-        val res = StreamResolver.searchAlbums(artistName)
-        res.onSuccess {
-            albums = it
-        }
-        isLoadingAlbums = false
-    }
-
-    // Load top tracks when user switches to tab 1
-    LaunchedEffect(selectedTab) {
-        if (selectedTab == 1 && topTracks.isEmpty() && !isLoadingTracks) {
-            isLoadingTracks = true
-            val res = StreamResolver.searchTracks("$artistName popular songs hits")
-            res.onSuccess {
-                topTracks = it
-            }
-            isLoadingTracks = false
-        }
-    }
 
     fun openAlbum(album: Album) {
         selectedAlbum = album
@@ -118,6 +97,35 @@ fun ArtistAlbumModal(
                 Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
             }
             isLoadingAlbumTracks = false
+        }
+    }
+
+    // If an initial album was passed, open it immediately
+    LaunchedEffect(initialAlbum) {
+        if (initialAlbum != null) {
+            openAlbum(initialAlbum)
+        }
+    }
+
+    // Load albums on launch
+    LaunchedEffect(artistName) {
+        isLoadingAlbums = true
+        val res = StreamResolver.searchAlbums(artistName)
+        res.onSuccess {
+            albums = it
+        }
+        isLoadingAlbums = false
+    }
+
+    // Load top tracks when user switches to tab 1
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == 1 && topTracks.isEmpty() && !isLoadingTracks) {
+            isLoadingTracks = true
+            val res = StreamResolver.searchTracks("$artistName popular songs hits")
+            res.onSuccess {
+                topTracks = it
+            }
+            isLoadingTracks = false
         }
     }
 
