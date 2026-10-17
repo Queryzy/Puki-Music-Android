@@ -2996,7 +2996,9 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.52: Kuromoji Japanese Morphological Analyzer for 100% Kanji Romaji:\n" +
+                        text = "• v1.0.53: Dedicated Romaji Sub-Bar & Non-Overlapping Hitbox:\n" +
+                                "  - Tombol toggle ROMAJI dipisahkan ke bar mandiri di atas kotak lirik; tidak lagi menumpuk (overlap) dengan teks lirik pertama sehingga 100% responsif dan tidak memicu lompatan lagu (seekTo) yang tidak disengaja.\n\n" +
+                                "• v1.0.52: Kuromoji Japanese Morphological Analyzer for 100% Kanji Romaji:\n" +
                                 "  - Integrasi library Kuromoji (Japanese NLP): seluruh huruf Kanji Jepang (seperti 世界, 生きる, 意味, 探して) kini diparsing morfologinya dan 100% diubah ke Romaji murni (sekai, ikiru, imi, sagashite) tanpa ada Kanji yang tertinggal.\n\n" +
                                 "• v1.0.51: Symmetrical Tabs & Strict Duration Matching for Lyrics:\n" +
                                 "  - Tab ARTWORK, LIRIK SYNC, dan ANTREAN dibuat 100% simetris berbobot rata (33.3% tiap tab).\n" +

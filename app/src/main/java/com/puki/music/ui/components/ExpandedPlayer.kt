@@ -263,6 +263,32 @@ fun ExpandedPlayerModal(
                     }
                 }
 
+                // Sub-Bar Khusus Tab Lirik: Tombol Toggle Romaji Terpisah & Nyaman Ditekan
+                if (playerCenterMode == 1) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (useRomajiLyrics) palette.primary else palette.surfaceVariant)
+                                .border(1.dp, if (useRomajiLyrics) palette.primary else palette.border, RoundedCornerShape(8.dp))
+                                .clickable { useRomajiLyrics = !useRomajiLyrics }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = if (useRomajiLyrics) "🔤 ROMAJI: ON" else "🔤 ROMAJI: OFF",
+                                color = if (useRomajiLyrics) palette.background else palette.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+
                 if (playerCenterMode == 0) {
                     // Center Album Artwork with Quality Pill & Stats
                     Column(
@@ -424,28 +450,6 @@ fun ExpandedPlayerModal(
                             .padding(14.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Header Sub-Menu Lirik: [ Romaji Toggle Switch ] ditaruh rapi di sudut kanan atas view lirik
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize(),
-                            contentAlignment = Alignment.TopEnd
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (useRomajiLyrics) palette.primary else palette.surfaceVariant)
-                                    .border(1.dp, if (useRomajiLyrics) palette.primary else palette.border, RoundedCornerShape(6.dp))
-                                    .clickable { useRomajiLyrics = !useRomajiLyrics }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = if (useRomajiLyrics) "🔤 ROMAJI: ON" else "🔤 ROMAJI: OFF",
-                                    color = if (useRomajiLyrics) palette.background else palette.textSecondary,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-                        }
                         if (isLoadingLyrics) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator(color = palette.primary, modifier = Modifier.size(32.dp))
