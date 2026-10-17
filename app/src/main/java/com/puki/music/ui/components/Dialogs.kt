@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -268,25 +269,150 @@ fun NewPlaylistDialog(
                         )
                     )
                 }
-            }
-        },
-        confirmButton = {
-            Button(
+                }
+                },
+                confirmButton = {
+                Button(
                 onClick = {
                     if (name.isNotBlank()) onCreate(name.trim(), autoDownload)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
-            ) {
+                ) {
                 Text("BUAT", color = palette.background, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
+                }
+                },
+                dismissButton = {
+                TextButton(onClick = onDismiss) {
                 Text("Batal", color = palette.textSecondary)
-            }
-        }
-    )
-}
+                }
+                }
+                )
+                }
+
+                @Composable
+                fun ImportPlaylistDialog(
+                palette: NuclearPalette,
+                isImporting: Boolean,
+                onDismiss: () -> Unit,
+                onImport: (url: String, customName: String, autoDownload: Boolean) -> Unit
+                ) {
+                var url by remember { mutableStateOf("") }
+                var customName by remember { mutableStateOf("") }
+                var autoDownload by remember { mutableStateOf(false) }
+
+                AlertDialog(
+                onDismissRequest = { if (!isImporting) onDismiss() },
+                containerColor = palette.surfaceVariant,
+                title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Download, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                Text(
+                    "IMPORT PLAYLIST",
+                    color = palette.primary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                }
+                },
+                text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Mendukung tautan playlist atau album dari YouTube Music atau Spotify publik.",
+                    color = palette.textSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    placeholder = { Text("Tempel link YT Music / Spotify...", color = palette.textSecondary, fontSize = 12.sp) },
+                    singleLine = true,
+                    enabled = !isImporting,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = palette.primary,
+                        unfocusedBorderColor = palette.border,
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = customName,
+                    onValueChange = { customName = it },
+                    placeholder = { Text("Nama khusus (opsional, bawaan sumber)", color = palette.textSecondary, fontSize = 12.sp) },
+                    singleLine = true,
+                    enabled = !isImporting,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = palette.primary,
+                        unfocusedBorderColor = palette.border,
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Download Offline", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Text("Unduh otomatis seluruh lagu setelah diimpor", color = palette.textSecondary, fontSize = 10.sp)
+                    }
+                    Switch(
+                        checked = autoDownload,
+                        onCheckedChange = { autoDownload = it },
+                        enabled = !isImporting,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = palette.background,
+                            checkedTrackColor = palette.primary
+                        )
+                    )
+                }
+
+                if (isImporting) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = palette.primary, strokeWidth = 2.dp)
+                        Text("Mengekstrak playlist & metadata...", color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                }
+                },
+                confirmButton = {
+                Button(
+                onClick = {
+                    if (url.isNotBlank() && !isImporting) {
+                        onImport(url.trim(), customName.trim(), autoDownload)
+                    }
+                },
+                enabled = url.isNotBlank() && !isImporting,
+                colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                ) {
+                Text("IMPORT", color = palette.background, fontWeight = FontWeight.Bold)
+                }
+                },
+                dismissButton = {
+                TextButton(onClick = onDismiss, enabled = !isImporting) {
+                Text("Batal", color = palette.textSecondary)
+                }
+                }
+                )
+                }
 
 @Composable
 fun ThemeChooserDialog(

@@ -49,6 +49,7 @@ import com.puki.music.core.AppUpdateManager
 import com.puki.music.core.OfflineManager
 import com.puki.music.core.PlaybackService
 import com.puki.music.core.PlaybackStateManager
+import com.puki.music.core.PlaylistImporter
 import com.puki.music.core.ReleaseInfo
 import com.puki.music.core.StreamResolver
 import com.puki.music.data.LocalMusicStore
@@ -152,6 +153,8 @@ fun NuclearMainScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showExpandedPlayer by remember { mutableStateOf(false) }
     var showNewPlaylistDialog by remember { mutableStateOf(false) }
+    var showImportPlaylistDialog by remember { mutableStateOf(false) }
+    var isImportingPlaylist by remember { mutableStateOf(false) }
     var playlistToAddTo by remember { mutableStateOf<Track?>(null) }
     var activePlaylist by remember { mutableStateOf<Playlist?>(null) }
     var viewingArtist by remember { mutableStateOf<String?>(null) }
@@ -662,6 +665,7 @@ fun NuclearMainScreen(
                         playlistsList = store.getPlaylists()
                     },
                     onNewPlaylistClick = { showNewPlaylistDialog = true },
+                    onImportPlaylistClick = { showImportPlaylistDialog = true },
                     onTrackClick = { track, list -> playTrack(track, list) },
                     onMixPlayClick = { list -> startMixPlay(list) },
                     onDownloadTrack = { toggleOfflineDownload(it) },
@@ -738,6 +742,38 @@ fun NuclearMainScreen(
                 showNewPlaylistDialog = false
                 val msg = if (autoDownload) "Playlist '$name' dibuat (Auto-Download Aktif)" else "Playlist '$name' dibuat"
                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showImportPlaylistDialog) {
+        ImportPlaylistDialog(
+            palette = palette,
+            isImporting = isImportingPlaylist,
+            onDismiss = { showImportPlaylistDialog = false },
+            onImport = { url, customName, autoDownload ->
+                isImportingPlaylist = true
+                scope.launch {
+                    val importRes = PlaylistImporter.importPlaylist(url)
+                    importRes.onSuccess { result ->
+                        val finalName = if (customName.isNotBlank()) customName else result.title
+                        val newPl = store.createPlaylist(finalName, autoDownload = autoDownload)
+                        for (track in result.tracks) {
+                            store.addTrackToPlaylist(newPl.id, track)
+                        }
+                        playlistsList = store.getPlaylists()
+                        isImportingPlaylist = false
+                        showImportPlaylistDialog = false
+                        Toast.makeText(context, "Berhasil impor '${result.title}' (${result.tracks.size} lagu)", Toast.LENGTH_SHORT).show()
+
+                        if (autoDownload && result.tracks.isNotEmpty()) {
+                            downloadPlaylist(result.tracks, finalName, newPl.id)
+                        }
+                    }.onFailure { err ->
+                        isImportingPlaylist = false
+                        Toast.makeText(context, "Gagal impor: ${err.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         )
     }
@@ -1871,6 +1907,7 @@ fun PlaylistsTab(
     onSelectPlaylist: (Playlist) -> Unit,
     onBackToPlaylists: () -> Unit,
     onNewPlaylistClick: () -> Unit,
+    onImportPlaylistClick: () -> Unit = {},
     onTrackClick: (Track, List<Track>) -> Unit,
     onMixPlayClick: (List<Track>) -> Unit,
     onDownloadTrack: (Track) -> Unit,
@@ -2093,15 +2130,28 @@ fun PlaylistsTab(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
-                Button(
-                    onClick = onNewPlaylistClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("BARU", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onImportPlaylistClick,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
+                        border = BorderStroke(1.dp, palette.primary),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = palette.primary, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("IMPORT", color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onNewPlaylistClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("BARU", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -2349,7 +2399,11 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.41: Algoritma Pencarian Album YouTube Music Presisi:\n" +
+                        text = "• v1.0.42: Fitur Import Playlist YouTube Music & Spotify:\n" +
+                                "  - Tombol IMPORT di tab Playlist: Cukup tempel link playlist YT Music atau Spotify.\n" +
+                                "  - Ekstraksi otomatis seluruh tracklist & metadata ke playlist lokal Puki Music.\n" +
+                                "  - Opsi Auto-Download Offline saat impor selesai.\n\n" +
+                                "• v1.0.41: Algoritma Pencarian Album YouTube Music Presisi:\n" +
                                 "  - Query spesifik band discography & official full album (bukan keyword liar).\n" +
                                 "  - Hard exclusion: 100% buang musisi acak lain (dimitri vexus, Born for Revenge, dll).\n\n" +
                                 "• v1.0.40: Strict Relevance Filter untuk Pencarian Album:\n" +

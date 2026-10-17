@@ -198,12 +198,24 @@ object StreamResolver {
     private const val CACHE_TTL_MS = 4 * 60 * 60 * 1000L // 4 hours valid TTL for YouTube CDN audio URLs
 
     suspend fun resolveAudioStreamDetailed(trackUrl: String, maxRetries: Int = 3): Result<StreamResolution> = withContext(Dispatchers.IO) {
-        val videoId = if (trackUrl.contains("v=")) {
-            trackUrl.substringAfter("v=").substringBefore("&")
-        } else if (trackUrl.contains("youtu.be/")) {
-            trackUrl.substringAfter("youtu.be/").substringBefore("?")
+        var effectiveUrl = trackUrl
+        if (effectiveUrl.startsWith("ytsearch:")) {
+            val q = effectiveUrl.removePrefix("ytsearch:")
+            val searchRes = searchTracks(q)
+            val matched = searchRes.getOrNull()?.firstOrNull()
+            if (matched != null) {
+                effectiveUrl = matched.id
+            } else {
+                return@withContext Result.failure(IllegalStateException("Lagu '$q' tidak ditemukan di YouTube Music"))
+            }
+        }
+
+        val videoId = if (effectiveUrl.contains("v=")) {
+            effectiveUrl.substringAfter("v=").substringBefore("&")
+        } else if (effectiveUrl.contains("youtu.be/")) {
+            effectiveUrl.substringAfter("youtu.be/").substringBefore("?")
         } else {
-            trackUrl.trim().removePrefix("/")
+            effectiveUrl.trim().removePrefix("/")
         }
 
         val cached = streamCache[videoId]

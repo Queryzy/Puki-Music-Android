@@ -20,8 +20,8 @@ android {
         applicationId = "com.puki.music"
         minSdk = 26
         targetSdk = 34
-        versionCode = 42
-        versionName = "1.0.41"
+        versionCode = 43
+        versionName = "1.0.42"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
