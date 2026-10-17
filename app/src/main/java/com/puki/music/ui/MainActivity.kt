@@ -237,7 +237,7 @@ fun NuclearMainScreen(
     LaunchedEffect(Unit) {
         checkAppUpdate(showToastIfLatest = false)
 
-        // Auto-heal / Backfill plays & likes for legacy downloaded or liked songs
+        // Auto-heal / Backfill plays & likes for legacy downloaded, liked songs, or playlist items
         OfflineManager.downloadScope.launch(Dispatchers.IO) {
             val allTracksToAudit = mutableListOf<Track>()
             val seen = mutableSetOf<String>()
@@ -254,6 +254,14 @@ fun NuclearMainScreen(
                     allTracksToAudit.add(t)
                 }
             }
+            for (pl in store.getPlaylists()) {
+                for (t in store.getPlaylistTracks(pl.id)) {
+                    val norm = LocalMusicStore.normalizeId(t.id)
+                    if (t.viewCount <= 0 && seen.add(norm)) {
+                        allTracksToAudit.add(t)
+                    }
+                }
+            }
 
             for (target in allTracksToAudit) {
                 try {
@@ -263,6 +271,11 @@ fun NuclearMainScreen(
                         withContext(Dispatchers.Main) {
                             offlineTracks = store.getOfflineTracks()
                             favoritesList = store.getFavorites()
+                            playlistsList = store.getPlaylists()
+                            val curActive = activePlaylist
+                            if (curActive != null) {
+                                activePlaylist = store.getPlaylists().firstOrNull { it.id == curActive.id }
+                            }
                         }
                     }
                 } catch (_: Exception) {}
@@ -2399,7 +2412,9 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.46: Auto Fallback Search & Auto-Skip Broken Tracks (1:1 YT Music):\n" +
+                        text = "• v1.0.47: Universal Auto-Heal Metrics for Imported Playlists:\n" +
+                                "  - Menambahkan crawler background auto-heal metrik plays & badge POPULER untuk seluruh lagu di playlist yang diimpor dari Spotify/YouTube.\n\n" +
+                                "• v1.0.46: Auto Fallback Search & Auto-Skip Broken Tracks (1:1 YT Music):\n" +
                                 "  - Jika track dihapus/region lock (video not found), otomatis fallback search track alternatif di YT.\n" +
                                 "  - Jika lagu tetap unplayable di antrean, player otomatis auto-skip ke track berikutnya tanpa macet.\n\n" +
                                 "• v1.0.45: Fix OkHttpDataSource & Prioritas IPv4 Google Video CDN:\n" +
