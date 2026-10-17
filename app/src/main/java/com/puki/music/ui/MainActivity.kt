@@ -2399,7 +2399,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.43: Fix CDN Streaming Handshake & Accurate Error Reporting:\n" +
+                        text = "• v1.0.44: Fix Cold-Start Playback Binding & Guaranteed Service Readiness:\n" +
+                                "  - Pastikan PlaybackService selalu ter-inisialisasi saat klik lagu pertama kali setelah update/cold boot.\n" +
+                                "  - Tambah auto-await loop (hingga 2 detik) untuk instansiasi ExoPlayer jika service belum selesai binding.\n\n" +
+                                "• v1.0.43: Fix CDN Streaming Handshake & Accurate Error Reporting:\n" +
                                 "  - Selaraskan User-Agent ExoPlayer & Accept-Language persis dengan NewPipe engine untuk mencegah HTTP 403 Forbidden di Google CDN.\n" +
                                 "  - Hentikan silent auto-advance jika stream gagal di-load agar status/pesan error eksplisit terlihat di banner UI.\n\n" +
                                 "• v1.0.42: Fitur Import Playlist YouTube Music & Spotify:\n" +

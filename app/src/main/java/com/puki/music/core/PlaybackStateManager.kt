@@ -2,7 +2,9 @@ package com.puki.music.core
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
@@ -167,6 +169,16 @@ object PlaybackStateManager {
     fun playTrack(context: Context, track: Track, newQueue: List<Track>? = null) {
         initContext(context)
 
+        // Ensure PlaybackService is explicitly started so player instance is ready
+        try {
+            val serviceIntent = Intent(context, PlaybackService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (_: Exception) {}
+
         resolveJob?.cancel()
         PreCacheManager.cancel()
         _activeTrack.value = track
@@ -269,7 +281,15 @@ object PlaybackStateManager {
 
                 withContext(Dispatchers.Main) {
                     _activeTrack.value = updatedTrack
-                    val p = player
+                    var p = player
+                    if (p == null) {
+                        // Wait up to 2 seconds for PlaybackService player binding if cold starting
+                        for (i in 1..10) {
+                            delay(200)
+                            p = player
+                            if (p != null) break
+                        }
+                    }
                     if (p != null) {
                         val metadata = MediaMetadata.Builder()
                             .setTitle(updatedTrack.title)
