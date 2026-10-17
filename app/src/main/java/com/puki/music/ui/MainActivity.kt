@@ -2399,7 +2399,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.42: Fitur Import Playlist YouTube Music & Spotify:\n" +
+                        text = "• v1.0.43: Fix CDN Streaming Handshake & Accurate Error Reporting:\n" +
+                                "  - Selaraskan User-Agent ExoPlayer & Accept-Language persis dengan NewPipe engine untuk mencegah HTTP 403 Forbidden di Google CDN.\n" +
+                                "  - Hentikan silent auto-advance jika stream gagal di-load agar status/pesan error eksplisit terlihat di banner UI.\n\n" +
+                                "• v1.0.42: Fitur Import Playlist YouTube Music & Spotify:\n" +
                                 "  - Tombol IMPORT di tab Playlist: Cukup tempel link playlist YT Music atau Spotify.\n" +
                                 "  - Ekstraksi otomatis seluruh tracklist & metadata ke playlist lokal Puki Music.\n" +
                                 "  - Opsi Auto-Download Offline saat impor selesai.\n\n" +

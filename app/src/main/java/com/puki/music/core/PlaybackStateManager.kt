@@ -158,6 +158,7 @@ object PlaybackStateManager {
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "ExoPlayer error [${error.errorCodeName} / ${error.errorCode}]: ${error.message}")
+                _errorMessage.value = "Playback error (${error.errorCodeName}): ${error.message}"
                 handlePlayerError()
             }
         })
@@ -296,13 +297,8 @@ object PlaybackStateManager {
             }.onFailure { err ->
                 withContext(Dispatchers.Main) {
                     _isResolvingStream.value = false
-                    val queue = _currentQueue.value
-                    if (queue.size > 1) {
-                        Log.w(TAG, "Stream failed for track ${track.title}. Auto-advancing to next track.")
-                        playNext()
-                    } else {
-                        _errorMessage.value = "Gagal memuat stream audio: ${err.message}"
-                    }
+                    Log.e(TAG, "Stream failed for track ${track.title}: ${err.message}", err)
+                    _errorMessage.value = "Gagal memuat stream audio: ${err.message}"
                 }
             }
         }

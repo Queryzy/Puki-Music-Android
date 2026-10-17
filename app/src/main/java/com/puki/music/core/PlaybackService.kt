@@ -105,9 +105,15 @@ class PlaybackService : MediaSessionService() {
             .setBackBuffer(30_000, true)
             .build()
 
-        // Robust HTTP DataSource matching NewPipe browser signature
+        // Match exact User-Agent and headers of NewPipe client to guarantee 0 handshake drops from googlevideo CDN
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept-Language" to "en-US,en;q=0.9",
+                    "Range" to "bytes=0-"
+                )
+            )
             .setConnectTimeoutMs(30_000)
             .setReadTimeoutMs(45_000)
             .setAllowCrossProtocolRedirects(true)
