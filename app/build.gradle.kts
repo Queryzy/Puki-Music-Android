@@ -20,8 +20,8 @@ android {
         applicationId = "com.puki.music"
         minSdk = 26
         targetSdk = 34
-        versionCode = 52
-        versionName = "1.0.51"
+        versionCode = 53
+        versionName = "1.0.52"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -78,6 +78,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/CONTRIBUTORS.md"
+            excludes += "META-INF/LICENSE.md"
+            excludes += "META-INF/NOTICE.md"
         }
     }
 }
@@ -110,6 +113,7 @@ dependencies {
 
     // YouTube / SoundCloud Extractor (Pure stream, zero ads)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+    implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Coroutines

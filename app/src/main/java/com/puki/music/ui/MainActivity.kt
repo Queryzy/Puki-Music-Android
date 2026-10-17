@@ -2996,7 +2996,9 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.51: Symmetrical Tabs & Strict Duration Matching for Lyrics:\n" +
+                        text = "• v1.0.52: Kuromoji Japanese Morphological Analyzer for 100% Kanji Romaji:\n" +
+                                "  - Integrasi library Kuromoji (Japanese NLP): seluruh huruf Kanji Jepang (seperti 世界, 生きる, 意味, 探して) kini diparsing morfologinya dan 100% diubah ke Romaji murni (sekai, ikiru, imi, sagashite) tanpa ada Kanji yang tertinggal.\n\n" +
+                                "• v1.0.51: Symmetrical Tabs & Strict Duration Matching for Lyrics:\n" +
                                 "  - Tab ARTWORK, LIRIK SYNC, dan ANTREAN dibuat 100% simetris berbobot rata (33.3% tiap tab).\n" +
                                 "  - Tombol toggle ROMAJI dipindahkan rapi ke dalam view internal LIRIK SYNC (sudut kanan atas).\n" +
                                 "  - Filter toleransi durasi ketat (±5 detik) di LRCLIB agar lirik tidak lagi tertukar dengan lagu artis lain yang judulnya sama.\n" +

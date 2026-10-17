@@ -1,57 +1,75 @@
 package com.puki.music.core
 
-import android.os.Build
 import android.util.Log
+import com.atilika.kuromoji.ipadic.Tokenizer
+import com.atilika.kuromoji.ipadic.Token
 
 object RomajiHelper {
     private const val TAG = "RomajiHelper"
 
-    // ICU Transliterator via reflection to ensure zero crash on older or modified ROMs
-    private val japaneseTransliterator: Any? by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                val clazz = Class.forName("android.icu.text.Transliterator")
-                val getInstanceMethod = clazz.getMethod("getInstance", String::class.java)
-                // Prefer Kana-Latin or Japanese-Latin specifically for proper Japanese romanization
-                try {
-                    getInstanceMethod.invoke(null, "Kana-Latin")
-                } catch (_: Throwable) {
-                    try {
-                        getInstanceMethod.invoke(null, "Japanese-Latin")
-                    } catch (_: Throwable) {
-                        getInstanceMethod.invoke(null, "Any-Latin")
-                    }
-                }
-            } catch (e: Throwable) {
-                Log.w(TAG, "ICU Transliterator unavailable: ${e.message}")
-                null
-            }
-        } else {
-            null
+    // Kuromoji Tokenizer - Parses Japanese Kanji into correct Katakana pronunciation
+    private val tokenizer: Tokenizer by lazy {
+        try {
+            Tokenizer()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to initialize Kuromoji Tokenizer: ${e.message}")
+            Tokenizer.Builder().build()
         }
     }
 
-    private val transliterateMethod by lazy {
-        japaneseTransliterator?.javaClass?.getMethod("transliterate", String::class.java)
-    }
-
+    /**
+     * Converts full Japanese text (Kanji + Hiragana + Katakana) to clean Romaji (Latin Alphabet).
+     * Example: "それでもこの世界で生きる意味探して" -> "soredemo kono sekai de ikiru imi sagashite"
+     */
     fun toRomaji(text: String): String {
         if (text.isBlank()) return text
-        // First convert Kana directly using precise Japanese map so kana is 100% accurate Japanese
-        val mappedKana = fallbackTransliterate(text)
         return try {
-            val res = transliterateMethod?.invoke(japaneseTransliterator, mappedKana) as? String
-            res ?: mappedKana
-        } catch (_: Throwable) {
-            mappedKana
+            val tokens: List<Token> = tokenizer.tokenize(text)
+            val result = StringBuilder()
+
+            for (token in tokens) {
+                val reading = token.reading
+                val surface = token.surface
+
+                if (!reading.isNullOrBlank() && reading != "*") {
+                    result.append(kanaToRomaji(reading))
+                } else {
+                    result.append(kanaToRomaji(surface))
+                }
+            }
+            cleanRomajiSpacing(result.toString())
+        } catch (e: Throwable) {
+            Log.w(TAG, "Romaji parsing fallback: ${e.message}")
+            kanaToRomaji(text)
         }
     }
 
-    // Lightweight fallback Kana-to-Romaji dictionary for pure Hiragana & Katakana
-    private fun fallbackTransliterate(input: String): String {
+    private fun cleanRomajiSpacing(input: String): String {
+        return input
+            .replace("\\s+".toRegex(), " ")
+            .trim()
+    }
+
+    private fun kanaToRomaji(input: String): String {
         val sb = StringBuilder()
         var i = 0
         while (i < input.length) {
+            // Sokuon (っ / ッ) - Doubles the next consonant
+            if (input[i] == 'っ' || input[i] == 'ッ') {
+                if (i + 1 < input.length) {
+                    val nextRomaji = kanaMap[input.substring(i + 1, (i + 3).coerceAtMost(input.length))]
+                        ?: kanaMap[input.substring(i + 1, i + 2)]
+                    if (!nextRomaji.isNullOrEmpty()) {
+                        sb.append(nextRomaji[0])
+                        i++
+                        continue
+                    }
+                }
+                i++
+                continue
+            }
+
+            // Check digraphs (2 characters like きゃ / キャ / しょ / ショ)
             if (i + 1 < input.length) {
                 val two = input.substring(i, i + 2)
                 val mappedTwo = kanaMap[two]
@@ -61,6 +79,8 @@ object RomajiHelper {
                     continue
                 }
             }
+
+            // Check single character
             val one = input.substring(i, i + 1)
             val mappedOne = kanaMap[one]
             if (mappedOne != null) {
@@ -86,6 +106,7 @@ object RomajiHelper {
         "じゃ" to "ja", "じゅ" to "ju", "じょ" to "jo",
         "びゃ" to "bya", "びゅ" to "byu", "びょ" to "byo",
         "ぴゃ" to "pya", "ぴゅ" to "pyu", "ぴょ" to "pyo",
+
         // Katakana Digraphs
         "キャ" to "kya", "キュ" to "kyu", "キョ" to "kyo",
         "シャ" to "sha", "シュ" to "shu", "ショ" to "sho",
@@ -98,12 +119,17 @@ object RomajiHelper {
         "ジャ" to "ja", "ジュ" to "ju", "ジョ" to "jo",
         "ビャ" to "bya", "ビュ" to "byu", "ビョ" to "byo",
         "ピャ" to "pya", "ピュ" to "pyu", "ピョ" to "pyo",
+        "ティ" to "ti", "ディ" to "di", "トゥ" to "tu", "ドゥ" to "du",
+        "ウィ" to "wi", "ウェ" to "we", "ウォ" to "wo",
+        "ファ" to "fa", "フィ" to "fi", "フェ" to "fe", "フォ" to "fo",
+        "ヴァ" to "va", "ヴィ" to "vi", "ヴ" to "vu", "ヴェ" to "ve", "ヴォ" to "vo",
+
         // Hiragana
         "あ" to "a", "い" to "i", "う" to "u", "え" to "e", "お" to "o",
         "か" to "ka", "き" to "ki", "く" to "ku", "け" to "ke", "こ" to "ko",
         "さ" to "sa", "し" to "shi", "す" to "su", "せ" to "se", "そ" to "so",
         "た" to "ta", "ち" to "chi", "つ" to "tsu", "て" to "te", "と" to "to",
-        "な" to "na", "に" to "ni", "ぬ" to "nu", "ね" to "ne", "の" to "no",
+        "な" to "na", "に" to "ni", "ぬ" to "nu", "ne" to "ne", "の" to "no", "ね" to "ne",
         "は" to "ha", "ひ" to "hi", "ふ" to "fu", "へ" to "he", "ほ" to "ho",
         "ま" to "ma", "み" to "mi", "む" to "mu", "め" to "me", "も" to "mo",
         "や" to "ya", "ゆ" to "yu", "よ" to "yo",
@@ -114,6 +140,7 @@ object RomajiHelper {
         "だ" to "da", "ぢ" to "ji", "づ" to "zu", "で" to "de", "ど" to "do",
         "ば" to "ba", "び" to "bi", "ぶ" to "bu", "べ" to "be", "ぼ" to "bo",
         "ぱ" to "pa", "ぴ" to "pi", "ぷ" to "pu", "ぺ" to "pe", "ぽ" to "po",
+
         // Katakana
         "ア" to "a", "イ" to "i", "ウ" to "u", "エ" to "e", "オ" to "o",
         "カ" to "ka", "キ" to "ki", "ク" to "ku", "ケ" to "ke", "コ" to "ko",
