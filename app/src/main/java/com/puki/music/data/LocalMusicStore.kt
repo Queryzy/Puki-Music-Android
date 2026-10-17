@@ -449,7 +449,9 @@ class LocalMusicStore(private val context: Context) {
                     title = obj.getString("title"),
                     artist = obj.getString("artist"),
                     durationSeconds = obj.getLong("duration"),
-                    thumbnailUrl = obj.getString("thumbnailUrl")
+                    thumbnailUrl = obj.getString("thumbnailUrl"),
+                    viewCount = obj.optLong("viewCount", 0L),
+                    likeCount = obj.optLong("likeCount", 0L)
                 )
             )
         }
@@ -485,6 +487,8 @@ class LocalMusicStore(private val context: Context) {
             obj.put("artist", track.artist)
             obj.put("duration", track.durationSeconds)
             obj.put("thumbnailUrl", track.thumbnailUrl)
+            obj.put("viewCount", track.viewCount)
+            obj.put("likeCount", track.likeCount)
             array.put(obj)
         }
         prefs.edit().putString(KEY_FAVORITES, array.toString()).apply()
@@ -576,7 +580,9 @@ class LocalMusicStore(private val context: Context) {
                     title = obj.getString("title"),
                     artist = obj.getString("artist"),
                     durationSeconds = obj.getLong("duration"),
-                    thumbnailUrl = obj.getString("thumbnailUrl")
+                    thumbnailUrl = obj.getString("thumbnailUrl"),
+                    viewCount = obj.optLong("viewCount", 0L),
+                    likeCount = obj.optLong("likeCount", 0L)
                 )
             )
         }
@@ -596,6 +602,8 @@ class LocalMusicStore(private val context: Context) {
                 obj.put("artist", t.artist)
                 obj.put("duration", t.durationSeconds)
                 obj.put("thumbnailUrl", t.thumbnailUrl)
+                obj.put("viewCount", t.viewCount)
+                obj.put("likeCount", t.likeCount)
                 array.put(obj)
             }
             prefs.edit().putString("${KEY_PL_TRACKS}_$playlistId", array.toString()).apply()

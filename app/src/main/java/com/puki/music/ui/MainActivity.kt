@@ -259,12 +259,30 @@ fun NuclearMainScreen(
     }
 
     fun handleFavoriteToggle(track: Track) {
-        val isNowFav = store.toggleFavorite(track)
+        val trackToSave = if (track.viewCount <= 0 && activeTrack?.id == track.id && (activeTrack?.viewCount ?: 0L) > 0) {
+            track.copy(viewCount = activeTrack!!.viewCount, likeCount = activeTrack!!.likeCount)
+        } else {
+            track
+        }
+        val isNowFav = store.toggleFavorite(trackToSave)
         favoritesList = store.getFavorites()
         if (isNowFav) {
             Toast.makeText(context, "Ditambahkan ke Favorit ❤️", Toast.LENGTH_SHORT).show()
+            // Asynchronously resolve metrics in background if missing
+            if (trackToSave.viewCount <= 0) {
+                OfflineManager.downloadScope.launch(Dispatchers.IO) {
+                    val detailed = StreamResolver.resolveAudioStreamDetailed(trackToSave.id).getOrNull()
+                    if (detailed != null && detailed.viewCount > 0) {
+                        store.toggleFavorite(trackToSave) // remove
+                        store.toggleFavorite(trackToSave.copy(viewCount = detailed.viewCount, likeCount = detailed.likeCount)) // add with metrics
+                        withContext(Dispatchers.Main) {
+                            favoritesList = store.getFavorites()
+                        }
+                    }
+                }
+            }
             if (store.isAutoDownloadLikedEnabled()) {
-                triggerAutoDownloadIfAllowed(track, "Favorit")
+                triggerAutoDownloadIfAllowed(trackToSave, "Favorit")
             }
         } else {
             Toast.makeText(context, "Dihapus dari Favorit", Toast.LENGTH_SHORT).show()
@@ -2292,7 +2310,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.35: Multi-thread Downloader & Official Music First:\n" +
+                        text = "• v1.0.36: Universal Likes & Favorites Plays/Badges:\n" +
+                                "  - Lagu yang di-like (Favorit) dan Playlist otomatis menyimpan & menampilkan angka plays dan badge 🔥 POPULER.\n" +
+                                "  - Background metrics resolver otomatis melengkapi plays untuk lagu favorit lama.\n\n" +
+                                "• v1.0.35: Multi-thread Downloader & Official Music First:\n" +
                                 "  - Kecepatan unduhan multi-threaded chunk (4 koneksi simultan) naik drastis dari puluhan KB/s ke MB/s penuh.\n" +
                                 "  - Verifikasi integritas ukuran file & header audio anti-corrupt.\n" +
                                 "  - Plays, likes, dan badge 🔥 POPULER kini tersimpan permanen saat offline.\n" +
