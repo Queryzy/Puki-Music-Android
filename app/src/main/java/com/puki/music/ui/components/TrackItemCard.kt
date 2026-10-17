@@ -97,7 +97,7 @@ fun TrackItemCard(
             Spacer(modifier = Modifier.height(2.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (showOfflineStatus) {
                     Text(
@@ -106,6 +106,11 @@ fun TrackItemCard(
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "•",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
                     )
                 }
                 Text(
@@ -118,6 +123,19 @@ fun TrackItemCard(
                         Modifier.clickable { onArtistClick(track.artist) }
                     } else Modifier
                 )
+                if (track.formattedViews != null) {
+                    Text(
+                        text = "•",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        text = "${track.formattedViews} plays",
+                        color = palette.primary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
                 Text(
                     text = "• ${track.formattedDuration}",
                     color = palette.textSecondary,
@@ -125,7 +143,7 @@ fun TrackItemCard(
                 )
             }
 
-            if (track.isPopular || track.formattedViews != null || playCount > 0 || (fileSizeText != null && isOffline)) {
+            if (track.isPopular || playCount > 0 || (fileSizeText != null && isOffline)) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -137,14 +155,6 @@ fun TrackItemCard(
                             color = palette.secondary,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    if (track.formattedViews != null) {
-                        Text(
-                            text = "👁 ${track.formattedViews}",
-                            color = palette.textSecondary,
-                            fontSize = 9.sp,
                             fontFamily = FontFamily.Monospace
                         )
                     }

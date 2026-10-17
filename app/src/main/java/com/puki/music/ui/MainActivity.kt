@@ -2203,12 +2203,21 @@ fun SettingsTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = "Puki Music",
-                            color = palette.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Puki Music",
+                                color = palette.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = "by Nands",
+                                color = palette.secondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
@@ -2283,11 +2292,12 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.32: Fix ANR Watchdog & Responsive Instant Playback:\n" +
-                               "  - Eliminasi ServiceTimeout ANR (hapus startForegroundService redundant dari MainActivity).\n" +
-                               "  - In-Memory Stream Cache: Stream URL YouTube di-cache di RAM 4 jam (resolving instan 0ms saat replay/mix).\n" +
-                               "  - Buffer Start 500ms: Lagu langsung berputar tanpa jeda 2-3 detik.\n" +
-                               "  - Zero Disk I/O di Main Thread: Hapus file checks dari render loop LazyColumn album.\n" +
+                        text = "• v1.0.33: YouTube Music Stats (Plays & Popularity Integration):\n" +
+                               "  - Search Results & Tracklists: Subtitle trek kini menampilkan play count resmi persis YouTube Music (misal: Radiohead • 217M plays • 04:59).\n" +
+                               "  - Expanded Player Badge: Chip badge popularitas menampilkan total play count dan likes YouTube realtime di bawah nama artis.\n" +
+                               "  - Branding Signature: Menambahkan identitas 'by Nands' pada Settings & App Info.\n" +
+                               "  - Instant Metrics: Angka popularitas dimuat 0ms tanpa overhead network tambahan.\n" +
+                               "• v1.0.32: Fix ANR Watchdog & Responsive Instant Playback.\n" +
                                "• v1.0.31: Rename package com.puki.music & fix lock screen dropouts.\n" +
                                "• v1.0.30: Production Keystore Signing (RSA 4096-bit).",
                         color = palette.textSecondary,
@@ -2793,7 +2803,7 @@ fun SettingsTab(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Puki Music v$currentVersionName",
+                        text = "Puki Music v$currentVersionName • by Nands",
                         color = palette.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

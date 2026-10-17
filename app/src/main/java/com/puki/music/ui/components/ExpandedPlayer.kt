@@ -303,6 +303,11 @@ fun ExpandedPlayerModal(
                         if (track.formattedViews != null || track.formattedLikes != null || playCount > 0) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(palette.surfaceVariant.copy(alpha = 0.7f))
+                                    .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -317,9 +322,10 @@ fun ExpandedPlayerModal(
                                 }
                                 if (track.formattedViews != null) {
                                     Text(
-                                        text = "👁 ${track.formattedViews} views",
-                                        color = palette.textSecondary,
+                                        text = "▶ ${track.formattedViews} plays",
+                                        color = palette.primary,
                                         fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -333,10 +339,9 @@ fun ExpandedPlayerModal(
                                 }
                                 if (playCount > 0) {
                                     Text(
-                                        text = "🎧 Diputar ${playCount}x",
-                                        color = palette.primary,
+                                        text = "🎧 ${playCount}x",
+                                        color = palette.textSecondary,
                                         fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
