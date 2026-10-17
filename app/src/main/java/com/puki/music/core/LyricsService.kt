@@ -57,9 +57,11 @@ object LyricsService {
 
     private fun cleanArtistName(artist: String): String {
         return artist
+            .replace("(?i)\\b(official|youtube|channel|music|video|vevo|records|entertainment)\\b".toRegex(), "")
             .replace(" - Topic", "")
             .replace("VEVO", "")
             .trim()
+            .replace("\\s+".toRegex(), " ")
     }
 
     fun parseLrc(lrcText: String): List<LyricLine> {

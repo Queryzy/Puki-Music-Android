@@ -2996,7 +2996,9 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.53: Dedicated Romaji Sub-Bar & Non-Overlapping Hitbox:\n" +
+                        text = "• v1.0.54: Aggressive Artist Channel Sanitizer for Lyrics:\n" +
+                                "  - Pembersihan nama uploader YouTube otomatis: menghapus imbuhan seperti 'Official YouTube Channel', 'Records', 'Entertainment' dari nama artis (misal: 'FLOW Official YouTube Channel' -> 'FLOW'). Lirik lagu Naruto 'Sign' dan lagu musisi resmi lainnya kini 100% langsung ditemukan.\n\n" +
+                                "• v1.0.53: Dedicated Romaji Sub-Bar & Non-Overlapping Hitbox:\n" +
                                 "  - Tombol toggle ROMAJI dipisahkan ke bar mandiri di atas kotak lirik; tidak lagi menumpuk (overlap) dengan teks lirik pertama sehingga 100% responsif dan tidak memicu lompatan lagu (seekTo) yang tidak disengaja.\n\n" +
                                 "• v1.0.52: Kuromoji Japanese Morphological Analyzer for 100% Kanji Romaji:\n" +
                                 "  - Integrasi library Kuromoji (Japanese NLP): seluruh huruf Kanji Jepang (seperti 世界, 生きる, 意味, 探して) kini diparsing morfologinya dan 100% diubah ke Romaji murni (sekai, ikiru, imi, sagashite) tanpa ada Kanji yang tertinggal.\n\n" +
