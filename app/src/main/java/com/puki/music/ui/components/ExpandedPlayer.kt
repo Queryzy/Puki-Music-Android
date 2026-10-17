@@ -79,11 +79,14 @@ fun ExpandedPlayerModal(
     var lyricsError by remember(track.id) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
-    LaunchedEffect(track.id, playerCenterMode) {
-        if (playerCenterMode == 1 && lyricsResult == null && !isLoadingLyrics) {
+    var reloadLyricsTrigger by remember(track.id) { mutableIntStateOf(0) }
+
+    LaunchedEffect(track.id, playerCenterMode, reloadLyricsTrigger) {
+        if (playerCenterMode == 1 && (lyricsResult == null || reloadLyricsTrigger > 0) && !isLoadingLyrics) {
             isLoadingLyrics = true
             lyricsError = null
-            val res = LyricsService.getLyrics(context, track)
+            val force = reloadLyricsTrigger > 0
+            val res = LyricsService.getLyrics(context, track, forceRefresh = force)
             res.onSuccess {
                 lyricsResult = it
             }.onFailure {
@@ -238,7 +241,7 @@ fun ExpandedPlayerModal(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "📜 LIRIK SYNC",
+                            text = if (lyricsResult?.isSynced == true) "📜 LIRIK SYNC" else "📜 LIRIK",
                             color = if (playerCenterMode == 1) palette.background else palette.textSecondary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
@@ -462,7 +465,7 @@ fun ExpandedPlayerModal(
                             val listState = rememberLazyListState()
 
                             LaunchedEffect(activeIndex) {
-                                if (activeIndex >= 0) {
+                                if (activeIndex >= 0 && !listState.isScrollInProgress) {
                                     listState.animateScrollToItem((activeIndex - 2).coerceAtLeast(0))
                                 }
                             }
@@ -527,15 +530,46 @@ fun ExpandedPlayerModal(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Button(
                                     onClick = {
-                                        isLoadingLyrics = true
+                                        LyricsService.clearCache(context, track.id)
                                         lyricsError = null
                                         lyricsResult = null
+                                        reloadLyricsTrigger++
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
                                     shape = RoundedCornerShape(6.dp),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                 ) {
                                     Text("COBA LAGI", color = palette.background, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Tombol floating refresh cache lirik jika lirik yang ter-cache salah/tidak sinkron
+                        if (lyricsResult != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.BottomEnd
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(palette.surface.copy(alpha = 0.85f))
+                                        .border(1.dp, palette.border.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            LyricsService.clearCache(context, track.id)
+                                            lyricsResult = null
+                                            reloadLyricsTrigger++
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "🔄 REFRESH LIRIK",
+                                        color = palette.textSecondary,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }

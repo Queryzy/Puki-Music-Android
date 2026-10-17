@@ -91,12 +91,21 @@ object LyricsService {
         return 0
     }
 
-    suspend fun getLyrics(context: Context, track: Track): Result<LyricsResult> = withContext(Dispatchers.IO) {
+    fun clearCache(context: Context, trackId: String) {
+        try {
+            val cacheFile = File(getCacheDir(context), "${sanitizeFilename(trackId)}.json")
+            if (cacheFile.exists()) {
+                cacheFile.delete()
+            }
+        } catch (_: Exception) {}
+    }
+
+    suspend fun getLyrics(context: Context, track: Track, forceRefresh: Boolean = false): Result<LyricsResult> = withContext(Dispatchers.IO) {
         runCatching {
             val cacheFile = File(getCacheDir(context), "${sanitizeFilename(track.id)}.json")
 
-            // 1. Check local file cache
-            if (cacheFile.exists() && cacheFile.length() > 20) {
+            // 1. Check local file cache unless forceRefresh
+            if (!forceRefresh && cacheFile.exists() && cacheFile.length() > 20) {
                 try {
                     val jsonStr = cacheFile.readText()
                     val obj = JSONObject(jsonStr)

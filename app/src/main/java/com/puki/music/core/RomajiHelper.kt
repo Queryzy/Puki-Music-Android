@@ -18,13 +18,18 @@ object RomajiHelper {
     }
 
     /**
-     * Converts full Japanese text (Kanji + Hiragana + Katakana) to clean Romaji (Latin Alphabet).
-     * Example: "それでもこの世界で生きる意味探して" -> "soredemo kono sekai de ikiru imi sagashite"
+     * Converts full CJK text (Japanese Kanji/Kana & Korean Hangul) to clean Romaji (Latin Alphabet).
+     * Japanese Example: "それでもこの世界で生きる意味探して" -> "soredemo kono sekai de ikiru imi sagashite"
+     * Korean Example: "너의 입술로 말을 해줘" -> "neoui ipsulro maleul haejwo"
      */
     fun toRomaji(text: String): String {
         if (text.isBlank()) return text
+        // 1. Process Korean Hangul syllables if present
+        val processedKorean = hangulToRomaji(text)
+
+        // 2. Process Japanese Kanji & Kana using Kuromoji Tokenizer
         return try {
-            val tokens: List<Token> = tokenizer.tokenize(text)
+            val tokens: List<Token> = tokenizer.tokenize(processedKorean)
             val result = StringBuilder()
 
             for (token in tokens) {
@@ -40,8 +45,33 @@ object RomajiHelper {
             cleanRomajiSpacing(result.toString())
         } catch (e: Throwable) {
             Log.w(TAG, "Romaji parsing fallback: ${e.message}")
-            kanaToRomaji(text)
+            kanaToRomaji(processedKorean)
         }
+    }
+
+    // Standard Revised Romanization of Korean (Hangul Syllables 0xAC00 - 0xD7A3)
+    private val choseong = arrayOf("g", "kk", "n", "d", "tt", "r", "m", "b", "pp", "s", "ss", "", "j", "jj", "ch", "k", "t", "p", "h")
+    private val jungseong = arrayOf("a", "ae", "ya", "yae", "eo", "e", "yeo", "ye", "o", "wa", "wae", "oe", "yo", "u", "wo", "we", "wi", "yu", "eu", "ui", "i")
+    private val jongseong = arrayOf("", "k", "k", "ks", "n", "nj", "nh", "t", "l", "lg", "lm", "lb", "ls", "lt", "lp", "lh", "m", "p", "ps", "s", "ss", "ng", "j", "ch", "k", "t", "p", "h")
+
+    private fun hangulToRomaji(text: String): String {
+        val sb = StringBuilder()
+        for (c in text) {
+            val code = c.code
+            if (code in 0xAC00..0xD7A3) {
+                val sIndex = code - 0xAC00
+                val lIndex = sIndex / (21 * 28)
+                val vIndex = (sIndex % (21 * 28)) / 28
+                val tIndex = sIndex % 28
+
+                sb.append(choseong[lIndex])
+                sb.append(jungseong[vIndex])
+                sb.append(jongseong[tIndex])
+            } else {
+                sb.append(c)
+            }
+        }
+        return sb.toString()
     }
 
     private fun cleanRomajiSpacing(input: String): String {

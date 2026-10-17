@@ -2996,7 +2996,13 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.54: Aggressive Artist Channel Sanitizer for Lyrics:\n" +
+                        text = "• v1.0.56: Lyrics Cache Invalidation & Direct Refresh Button:\n" +
+                                "  - Tombol '🔄 REFRESH LIRIK' langsung di player lirik: menghapus cache lokal lama yang sempat keliru dan memaksa query ulang lirik sinkron asli ke LRCLIB.\n" +
+                                "  - Label status lirik dinamis: menampilkan '📜 LIRIK SYNC' untuk karaoke tersinkronisasi dan '📜 LIRIK' jika lirik teks biasa.\n" +
+                                "  - Korean Hangul Support & Japanese Kuromoji Tokenizer terintegrasi penuh.\n\n" +
+                                "• v1.0.55: Korean Hangul-to-Romanization Engine Support:\n" +
+                                "  - Menambahkan dekomposisi suku kata Hangeul Korea (Choseong, Jungseong, Jongseong). Lirik lagu Korea (seperti lagu 'Say Yes' Loco & Punch: '너의 입술로 말을 해줘') kini 100% terkonversi rapi ke huruf Latin/Romanization ('neoui ipsulro maleul haejwo say yes, say yes').\n\n" +
+                                "• v1.0.54: Aggressive Artist Channel Sanitizer for Lyrics:\n" +
                                 "  - Pembersihan nama uploader YouTube otomatis: menghapus imbuhan seperti 'Official YouTube Channel', 'Records', 'Entertainment' dari nama artis (misal: 'FLOW Official YouTube Channel' -> 'FLOW'). Lirik lagu Naruto 'Sign' dan lagu musisi resmi lainnya kini 100% langsung ditemukan.\n\n" +
                                 "• v1.0.53: Dedicated Romaji Sub-Bar & Non-Overlapping Hitbox:\n" +
                                 "  - Tombol toggle ROMAJI dipisahkan ke bar mandiri di atas kotak lirik; tidak lagi menumpuk (overlap) dengan teks lirik pertama sehingga 100% responsif dan tidak memicu lompatan lagu (seekTo) yang tidak disengaja.\n\n" +
