@@ -2412,7 +2412,9 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.48: Real-Time Romaji Transliteration Toggle:\n" +
+                        text = "• v1.0.49: Multi-Tier Dual-Script Lyrics Search (Kanji + Romaji):\n" +
+                                "  - Jika lagu Jepang disimpan dengan judul Kanji/Kana, sistem otomatis mencari versi asli dan versi Romaji-nya sekaligus ke LRCLIB agar peluang lirik ditemukan naik drastis.\n\n" +
+                                "• v1.0.48: Real-Time Romaji Transliteration Toggle:\n" +
                                 "  - Tombol toggle [ 🔤 ROMAJI ] di tab LIRIK SYNC: otomatis mengubah lirik Jepang (Kanji & Kana) / Korea menjadi teks alfabet Latin (Romaji).\n\n" +
                                 "• v1.0.47: Universal Auto-Heal Metrics for Imported Playlists:\n" +
                                 "  - Menambahkan crawler background auto-heal metrik plays & badge POPULER untuk seluruh lagu di playlist yang diimpor dari Spotify/YouTube.\n\n" +

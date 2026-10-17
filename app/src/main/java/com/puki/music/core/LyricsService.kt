@@ -45,7 +45,8 @@ object LyricsService {
 
     private fun cleanSongTitle(title: String): String {
         return title
-            .replace("(?i)\\b(official|music|video|audio|remastered|remaster|hd|4k|hq|visualizer|lyric video|lyrics|explicit|clean)\\b".toRegex(), "")
+            .replace("(?i)\\b(official|music|video|audio|remastered|remaster|hd|4k|hq|visualizer|lyric video|lyrics|explicit|clean|original soundtrack|ost)\\b".toRegex(), "")
+            .replace("(?i)\\s*-\\s*(from|live|acoustic|instrumental|theme).*".toRegex(), "")
             .replace("(?i)\\(.*?\\)".toRegex(), "")
             .replace("(?i)\\[.*?\\]".toRegex(), "")
             .replace("(?i)ft\\..*".toRegex(), "")
@@ -138,28 +139,45 @@ object LyricsService {
 
             // Fallback: search query
             if (jsonObject == null || (jsonObject.optString("syncedLyrics").isBlank() && jsonObject.optString("plainLyrics").isBlank())) {
-                val searchUrl = "https://lrclib.net/api/search?q=${URLEncoder.encode("$cleanArtist $cleanTitle", "UTF-8")}"
-                val searchReq = Request.Builder()
-                    .url(searchUrl)
-                    .header("User-Agent", "PukiMusic/1.0 (https://github.com/nukeop/nuclear)")
-                    .build()
+                val searchQueries = mutableListOf<String>()
+                searchQueries.add("$cleanArtist $cleanTitle")
+                searchQueries.add(cleanTitle)
+                searchQueries.add("${track.artist} ${track.title}")
+                searchQueries.add(track.title)
 
-                val searchRes = try { httpClient.newCall(searchReq).execute() } catch (_: Exception) { null }
-                if (searchRes != null && searchRes.isSuccessful) {
-                    val searchBody = searchRes.body?.string().orEmpty()
-                    if (searchBody.isNotBlank()) {
-                        val arr = JSONArray(searchBody)
-                        if (arr.length() > 0) {
-                            // Find item with syncedLyrics first
-                            var bestObj = arr.getJSONObject(0)
-                            for (i in 0 until arr.length()) {
-                                val item = arr.getJSONObject(i)
-                                if (item.optString("syncedLyrics").isNotBlank()) {
-                                    bestObj = item
-                                    break
+                // Jika judul ada unsur kanji/kana, tambahkan juga versi romaji-nya ke antrean search
+                val romajiTitle = RomajiHelper.toRomaji(cleanTitle)
+                if (romajiTitle != cleanTitle && romajiTitle.isNotBlank()) {
+                    searchQueries.add("$cleanArtist $romajiTitle")
+                    searchQueries.add(romajiTitle)
+                }
+
+                val distinctQueries = searchQueries.distinct()
+
+                for (q in distinctQueries) {
+                    val searchUrl = "https://lrclib.net/api/search?q=${URLEncoder.encode(q, "UTF-8")}"
+                    val searchReq = Request.Builder()
+                        .url(searchUrl)
+                        .header("User-Agent", "PukiMusic/1.0 (https://github.com/nukeop/nuclear)")
+                        .build()
+
+                    val searchRes = try { httpClient.newCall(searchReq).execute() } catch (_: Exception) { null }
+                    if (searchRes != null && searchRes.isSuccessful) {
+                        val searchBody = searchRes.body?.string().orEmpty()
+                        if (searchBody.isNotBlank()) {
+                            val arr = JSONArray(searchBody)
+                            if (arr.length() > 0) {
+                                var bestObj = arr.getJSONObject(0)
+                                for (i in 0 until arr.length()) {
+                                    val item = arr.getJSONObject(i)
+                                    if (item.optString("syncedLyrics").isNotBlank()) {
+                                        bestObj = item
+                                        break
+                                    }
                                 }
+                                jsonObject = bestObj
+                                if (jsonObject.optString("syncedLyrics").isNotBlank()) break
                             }
-                            jsonObject = bestObj
                         }
                     }
                 }
