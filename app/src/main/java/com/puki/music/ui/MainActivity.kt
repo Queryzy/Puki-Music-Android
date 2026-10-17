@@ -2996,7 +2996,12 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.50: Clean Settings Changelog View:\n" +
+                        text = "• v1.0.51: Symmetrical Tabs & Strict Duration Matching for Lyrics:\n" +
+                                "  - Tab ARTWORK, LIRIK SYNC, dan ANTREAN dibuat 100% simetris berbobot rata (33.3% tiap tab).\n" +
+                                "  - Tombol toggle ROMAJI dipindahkan rapi ke dalam view internal LIRIK SYNC (sudut kanan atas).\n" +
+                                "  - Filter toleransi durasi ketat (±5 detik) di LRCLIB agar lirik tidak lagi tertukar dengan lagu artis lain yang judulnya sama.\n" +
+                                "  - Penyesuaian transliterator Jepang murni (Kana-Latin/Japanese-Latin) agar ejaan Romaji tidak kacau menjadi Pinyin Cina.\n\n" +
+                                "• v1.0.50: Clean Settings Changelog View:\n" +
                                 "  - Tampilan Catatan Rilis di Settings kini rapi dalam bentuk kartu ringkas; detail hanya muncul saat di-klik (modal pop-up).\n\n" +
                                 "• v1.0.49: Multi-Tier Dual-Script Lyrics Search (Kanji + Romaji):\n" +
                                 "  - Jika lagu Jepang disimpan dengan judul Kanji/Kana, sistem otomatis mencari versi asli dan versi Romaji-nya sekaligus ke LRCLIB agar peluang lirik ditemukan naik drastis.\n\n" +

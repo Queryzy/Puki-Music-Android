@@ -167,16 +167,39 @@ object LyricsService {
                         if (searchBody.isNotBlank()) {
                             val arr = JSONArray(searchBody)
                             if (arr.length() > 0) {
-                                var bestObj = arr.getJSONObject(0)
+                                // Filter & scoring: prioritize items matching duration within tolerance (±5 seconds)
+                                var bestCandidate: JSONObject? = null
+                                var bestCandidateHasSync = false
+
                                 for (i in 0 until arr.length()) {
                                     val item = arr.getJSONObject(i)
-                                    if (item.optString("syncedLyrics").isNotBlank()) {
-                                        bestObj = item
-                                        break
+                                    val itemDur = item.optDouble("duration", 0.0)
+                                    val hasSync = item.optString("syncedLyrics").isNotBlank()
+                                    val hasPlain = item.optString("plainLyrics").isNotBlank()
+                                    if (!hasSync && !hasPlain) continue
+
+                                    val diff = if (track.durationSeconds > 0 && itemDur > 0) {
+                                        kotlin.math.abs(itemDur - track.durationSeconds)
+                                    } else 0.0
+
+                                    // If track duration is known, enforce strict tolerance (<= 5s)
+                                    if (track.durationSeconds > 0 && itemDur > 0 && diff > 5.0) {
+                                        continue
+                                    }
+
+                                    if (bestCandidate == null) {
+                                        bestCandidate = item
+                                        bestCandidateHasSync = hasSync
+                                    } else if (!bestCandidateHasSync && hasSync) {
+                                        bestCandidate = item
+                                        bestCandidateHasSync = true
                                     }
                                 }
-                                jsonObject = bestObj
-                                if (jsonObject.optString("syncedLyrics").isNotBlank()) break
+
+                                if (bestCandidate != null) {
+                                    jsonObject = bestCandidate
+                                    if (bestCandidateHasSync) break
+                                }
                             }
                         }
                     }

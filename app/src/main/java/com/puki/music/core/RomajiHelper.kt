@@ -7,15 +7,23 @@ object RomajiHelper {
     private const val TAG = "RomajiHelper"
 
     // ICU Transliterator via reflection to ensure zero crash on older or modified ROMs
-    private val kanaToLatinTransliterator: Any? by lazy {
+    private val japaneseTransliterator: Any? by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 val clazz = Class.forName("android.icu.text.Transliterator")
                 val getInstanceMethod = clazz.getMethod("getInstance", String::class.java)
-                // "Any-Latin" handles Kanji, Kana, Hangul, Cyrillic, Greek to Latin characters
-                getInstanceMethod.invoke(null, "Any-Latin")
+                // Prefer Kana-Latin or Japanese-Latin specifically for proper Japanese romanization
+                try {
+                    getInstanceMethod.invoke(null, "Kana-Latin")
+                } catch (_: Throwable) {
+                    try {
+                        getInstanceMethod.invoke(null, "Japanese-Latin")
+                    } catch (_: Throwable) {
+                        getInstanceMethod.invoke(null, "Any-Latin")
+                    }
+                }
             } catch (e: Throwable) {
-                Log.w(TAG, "ICU Transliterator Any-Latin unavailable: ${e.message}")
+                Log.w(TAG, "ICU Transliterator unavailable: ${e.message}")
                 null
             }
         } else {
@@ -24,16 +32,18 @@ object RomajiHelper {
     }
 
     private val transliterateMethod by lazy {
-        kanaToLatinTransliterator?.javaClass?.getMethod("transliterate", String::class.java)
+        japaneseTransliterator?.javaClass?.getMethod("transliterate", String::class.java)
     }
 
     fun toRomaji(text: String): String {
         if (text.isBlank()) return text
+        // First convert Kana directly using precise Japanese map so kana is 100% accurate Japanese
+        val mappedKana = fallbackTransliterate(text)
         return try {
-            val res = transliterateMethod?.invoke(kanaToLatinTransliterator, text) as? String
-            res ?: fallbackTransliterate(text)
+            val res = transliterateMethod?.invoke(japaneseTransliterator, mappedKana) as? String
+            res ?: mappedKana
         } catch (_: Throwable) {
-            fallbackTransliterate(text)
+            mappedKana
         }
     }
 
