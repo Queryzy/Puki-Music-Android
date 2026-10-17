@@ -2349,7 +2349,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.39: Fix Search Album & Direct Album Viewer:\n" +
+                        text = "• v1.0.40: Strict Relevance Filter untuk Pencarian Album:\n" +
+                                "  - Membuang 100% rilis acak orang lain yang hanya numpang kata kunci (misal: 'Reason for revenge', 'dimitri vexus').\n" +
+                                "  - Hanya meloloskan album resmi yang nama Uploader-nya cocok persis dengan artis atau judul album yang memuat nama artis.\n\n" +
+                                "• v1.0.39: Fix Search Album & Direct Album Viewer:\n" +
                                 "  - Memperbaiki akurasi pencarian Album: memprioritaskan album resmi rilis artis/label dan menyingkirkan playlist acak.\n" +
                                 "  - Klik kartu album di hasil pencarian kini langsung membuka daftar isi album yang dipilih (bukan me-reset ke profil artis umum).\n\n" +
                                 "• v1.0.38: Fix Layout Overflow & Parallel Downloader Probe:\n" +

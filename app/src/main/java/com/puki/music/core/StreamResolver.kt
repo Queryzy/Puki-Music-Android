@@ -77,48 +77,68 @@ object StreamResolver {
         runCatching {
             val service = ServiceList.YouTube
             val cleanQuery = artistOrQuery.trim()
+            val targetLower = cleanQuery.lowercase()
 
-            // 1. First attempt: Search with exact YouTube Music Albums filter
-            val items = mutableListOf<PlaylistInfoItem>()
+            val allItems = mutableListOf<PlaylistInfoItem>()
+
+            // 1. YouTube Music Albums query
             try {
                 val extractor = service.getSearchExtractor(cleanQuery, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS), null)
                 extractor.fetchPage()
-                items.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
+                allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
             } catch (_: Exception) {}
 
-            // 2. Fallback: If MUSIC_ALBUMS returns zero items, search playlists specifically for albums
-            if (items.isEmpty()) {
-                val queryWithAlbum = if (cleanQuery.contains("album", ignoreCase = true)) cleanQuery else "$cleanQuery album"
+            // 2. Query focused on official full album playlists
+            try {
+                val queryAlbum = "\"$cleanQuery\" album"
+                val extractor = service.getSearchExtractor(queryAlbum, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
+                extractor.fetchPage()
+                allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
+            } catch (_: Exception) {}
+
+            // 3. Fallback standard playlist query
+            if (allItems.isEmpty()) {
                 try {
-                    val extractor = service.getSearchExtractor(queryWithAlbum, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
+                    val queryFallback = "$cleanQuery full album"
+                    val extractor = service.getSearchExtractor(queryFallback, listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS), null)
                     extractor.fetchPage()
-                    items.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
+                    allItems.addAll(extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>())
                 } catch (_: Exception) {}
             }
 
-            // 3. Filter out generic random playlists and prioritize Official Albums
-            val targetLower = cleanQuery.lowercase()
-            val sortedAlbums = items.sortedWith(
-                compareByDescending<PlaylistInfoItem> { item ->
-                    val uploader = item.uploaderName.orEmpty().lowercase()
-                    val title = item.name.orEmpty().lowercase()
-                    val isTopic = uploader.endsWith("- topic") || uploader.endsWith("topic")
-                    val isOfficial = uploader.contains("official") || uploader.contains("records")
-                    val titleMatchesQuery = title.contains(targetLower) || targetLower.contains(title)
-                    val uploaderMatchesQuery = uploader.contains(targetLower)
-                    when {
-                        isTopic && (titleMatchesQuery || uploaderMatchesQuery) -> 4
-                        isOfficial && (titleMatchesQuery || uploaderMatchesQuery) -> 3
-                        isTopic -> 2
-                        isOfficial -> 1
-                        else -> 0
-                    }
-                }.thenByDescending { it.streamCount }
-            )
+            // Scoring system:
+            // Must prioritize albums where UPLOADER matches artist name, or title explicitly contains artist + album
+            val scoredAlbums = allItems.mapNotNull { item ->
+                val uploader = item.uploaderName.orEmpty().lowercase()
+                val title = item.name.orEmpty().lowercase()
+
+                val isExactUploader = uploader == targetLower || uploader == "$targetLower - topic"
+                val isUploaderContains = uploader.contains(targetLower)
+                val isTitleContainsArtist = title.contains(targetLower)
+                val isTopic = uploader.endsWith("- topic") || uploader.endsWith("topic")
+                val isOfficialLabel = uploader.contains("records") || uploader.contains("entertainment") || uploader.contains("music")
+
+                // Filter out complete noise: if neither uploader nor title contains the artist query, drop it
+                if (!isUploaderContains && !isTitleContainsArtist) {
+                    return@mapNotNull null
+                }
+
+                var score = 0
+                if (isExactUploader) score += 50
+                if (isTopic) score += 30
+                if (isUploaderContains) score += 20
+                if (isOfficialLabel && isTitleContainsArtist) score += 30
+                if (title.contains("album") || title.contains("ep") || title.contains("babak")) score += 15
+
+                item to score
+            }.sortedWith(
+                compareByDescending<Pair<PlaylistInfoItem, Int>> { it.second }
+                    .thenByDescending { it.first.streamCount }
+            ).map { it.first }
 
             val results = mutableListOf<Album>()
             val seen = mutableSetOf<String>()
-            for (item in sortedAlbums) {
+            for (item in scoredAlbums) {
                 val normUrl = item.url.trim()
                 if (seen.add(normUrl)) {
                     results.add(
