@@ -400,6 +400,76 @@ class LocalMusicStore(private val context: Context) {
         return getOfflineTracks().firstOrNull { normalizeId(it.id) == norm }?.localFilePath
     }
 
+    fun updateTrackMetrics(trackId: String, viewCount: Long, likeCount: Long) {
+        val norm = normalizeId(trackId)
+
+        // 1. Update in Offline Tracks
+        val offlineList = getOfflineTracks().toMutableList()
+        var offlineChanged = false
+        for (i in offlineList.indices) {
+            if (normalizeId(offlineList[i].id) == norm) {
+                offlineList[i] = offlineList[i].copy(viewCount = viewCount, likeCount = likeCount)
+                offlineChanged = true
+            }
+        }
+        if (offlineChanged) {
+            val array = JSONArray()
+            for (t in offlineList) {
+                val obj = JSONObject()
+                obj.put("id", t.id)
+                obj.put("title", t.title)
+                obj.put("artist", t.artist)
+                obj.put("duration", t.durationSeconds)
+                obj.put("thumbnailUrl", t.thumbnailUrl)
+                obj.put("localFilePath", t.localFilePath)
+                obj.put("viewCount", t.viewCount)
+                obj.put("likeCount", t.likeCount)
+                array.put(obj)
+            }
+            prefs.edit().putString(KEY_OFFLINE, array.toString()).apply()
+        }
+
+        // 2. Update in Favorites
+        val favList = getFavorites().toMutableList()
+        var favChanged = false
+        for (i in favList.indices) {
+            if (normalizeId(favList[i].id) == norm) {
+                favList[i] = favList[i].copy(viewCount = viewCount, likeCount = likeCount)
+                favChanged = true
+            }
+        }
+        if (favChanged) {
+            saveFavoritesList(favList)
+        }
+
+        // 3. Update in Playlists
+        for (pl in getPlaylists()) {
+            val plTracks = getPlaylistTracks(pl.id).toMutableList()
+            var plChanged = false
+            for (i in plTracks.indices) {
+                if (normalizeId(plTracks[i].id) == norm) {
+                    plTracks[i] = plTracks[i].copy(viewCount = viewCount, likeCount = likeCount)
+                    plChanged = true
+                }
+            }
+            if (plChanged) {
+                val array = JSONArray()
+                for (t in plTracks) {
+                    val obj = JSONObject()
+                    obj.put("id", t.id)
+                    obj.put("title", t.title)
+                    obj.put("artist", t.artist)
+                    obj.put("duration", t.durationSeconds)
+                    obj.put("thumbnailUrl", t.thumbnailUrl)
+                    obj.put("viewCount", t.viewCount)
+                    obj.put("likeCount", t.likeCount)
+                    array.put(obj)
+                }
+                prefs.edit().putString("${KEY_PL_TRACKS}_${pl.id}", array.toString()).apply()
+            }
+        }
+    }
+
     fun deleteOfflineTrack(trackId: String) {
         val norm = normalizeId(trackId)
         val list = getOfflineTracks().filterNot { normalizeId(it.id) == norm }

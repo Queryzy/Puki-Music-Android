@@ -232,6 +232,38 @@ fun NuclearMainScreen(
 
     LaunchedEffect(Unit) {
         checkAppUpdate(showToastIfLatest = false)
+
+        // Auto-heal / Backfill plays & likes for legacy downloaded or liked songs
+        OfflineManager.downloadScope.launch(Dispatchers.IO) {
+            val allTracksToAudit = mutableListOf<Track>()
+            val seen = mutableSetOf<String>()
+
+            for (t in offlineTracks) {
+                val norm = LocalMusicStore.normalizeId(t.id)
+                if (t.viewCount <= 0 && seen.add(norm)) {
+                    allTracksToAudit.add(t)
+                }
+            }
+            for (t in favoritesList) {
+                val norm = LocalMusicStore.normalizeId(t.id)
+                if (t.viewCount <= 0 && seen.add(norm)) {
+                    allTracksToAudit.add(t)
+                }
+            }
+
+            for (target in allTracksToAudit) {
+                try {
+                    val detailed = StreamResolver.resolveAudioStreamDetailed(target.id).getOrNull()
+                    if (detailed != null && detailed.viewCount > 0) {
+                        store.updateTrackMetrics(target.id, detailed.viewCount, detailed.likeCount)
+                        withContext(Dispatchers.Main) {
+                            offlineTracks = store.getOfflineTracks()
+                            favoritesList = store.getFavorites()
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun triggerAutoDownloadIfAllowed(track: Track, label: String) {
@@ -2310,7 +2342,9 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.36: Universal Likes & Favorites Plays/Badges:\n" +
+                        text = "• v1.0.37: Auto-Backfill Plays/Badges untuk Lagu Lama:\n" +
+                                "  - Lagu yang sudah terlanjur di-like atau di-download sebelum update otomatis di-heal/dilengkapi angka plays & badgenya di background.\n\n" +
+                                "• v1.0.36: Universal Likes & Favorites Plays/Badges:\n" +
                                 "  - Lagu yang di-like (Favorit) dan Playlist otomatis menyimpan & menampilkan angka plays dan badge 🔥 POPULER.\n" +
                                 "  - Background metrics resolver otomatis melengkapi plays untuk lagu favorit lama.\n\n" +
                                 "• v1.0.35: Multi-thread Downloader & Official Music First:\n" +
