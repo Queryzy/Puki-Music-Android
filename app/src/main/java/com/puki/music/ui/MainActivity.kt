@@ -727,6 +727,10 @@ fun NuclearMainScreen(
                         OfflineManager.deleteAllOfflineTracks(context)
                         offlineTracks = store.getOfflineTracks()
                         Toast.makeText(context, "Seluruh musik offline dibersihkan", Toast.LENGTH_SHORT).show()
+                    },
+                    onFavoritesChanged = {
+                        favoritesList = store.getFavorites()
+                        playlistsList = store.getPlaylists()
                     }
                 )
             }
@@ -2270,10 +2274,14 @@ fun SettingsTab(
     isCheckingUpdate: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
-    onClearAllOffline: () -> Unit
+    onClearAllOffline: () -> Unit,
+    onFavoritesChanged: () -> Unit = {}
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
     var showChangelogDialog by remember { mutableStateOf(false) }
+    var showExportSuccessDialog by remember { mutableStateOf<String?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importInputText by remember { mutableStateOf("") }
     var isAutoDlLiked by remember { mutableStateOf(store.isAutoDownloadLikedEnabled()) }
     var networkPref by remember { mutableStateOf(store.getAutoDownloadNetworkPreference()) }
 
@@ -2431,6 +2439,84 @@ fun SettingsTab(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+        }
+
+        // ── Backup & Sync Behavior Profile (Cross-Device) ──
+        item {
+            Text(
+                text = "CADANGAN & SINKRONISASI SELERA",
+                color = palette.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Profil Selera & Kebiasaan Musik",
+                        color = palette.textPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Ekspor seluruh riwayat putar, daftar playlist, lagu favorit, dan algoritma selera ke file JSON agar tidak perlu mengulang dari nol saat ganti HP.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val json = store.exportBehaviorJson()
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Puki Music Profile", json)
+                                    clipboard.setPrimaryClip(clip)
+
+                                    // Simpan juga ke file download publik agar mudah dipindah
+                                    val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                                    val backupFile = java.io.File(downloadsDir, "puki_music_profile_${System.currentTimeMillis() / 1000}.json")
+                                    backupFile.writeText(json)
+
+                                    showExportSuccessDialog = backupFile.absolutePath
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal mengekspor: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("📤 EKSPOR PROFIL", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                importInputText = ""
+                                showImportDialog = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            border = BorderStroke(1.dp, palette.primary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("📥 IMPOR PROFIL", color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
@@ -2971,6 +3057,98 @@ fun SettingsTab(
         )
     }
 
+    if (showExportSuccessDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showExportSuccessDialog = null },
+            title = { Text("Profil Berhasil Diekspor!", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column {
+                    Text(
+                        text = "1. Data JSON telah disalin otomatis ke Clipboard HP.\n2. Salinan file tersimpan di:",
+                        color = palette.textSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = showExportSuccessDialog ?: "",
+                        color = palette.textPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Kamu bisa kirim file ini atau paste teks JSON di HP barumu lewat menu 'IMPOR PROFIL'.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showExportSuccessDialog = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                ) {
+                    Text("MENGERTI", color = palette.background, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = palette.surfaceVariant
+        )
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("Impor Profil Selera & Playlist", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column {
+                    Text(
+                        text = "Tempelkan (Paste) teks JSON profil yang sudah kamu ekspor dari HP lama di bawah ini:",
+                        color = palette.textSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = importInputText,
+                        onValueChange = { importInputText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                        placeholder = { Text("Tempel JSON di sini...", color = palette.textSecondary.copy(alpha = 0.5f), fontSize = 11.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = palette.textPrimary, fontFamily = FontFamily.Monospace),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val input = importInputText.trim()
+                        if (input.isNotBlank()) {
+                            val res = store.importBehaviorJson(input)
+                            res.onSuccess { count ->
+                                Toast.makeText(context, "Profil berhasil dipulihkan! ($count lagu favorit diperbarui)", Toast.LENGTH_LONG).show()
+                                showImportDialog = false
+                                onFavoritesChanged()
+                            }.onFailure { err ->
+                                Toast.makeText(context, "Format JSON tidak valid: ${err.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                ) {
+                    Text("PULIHKAN", color = palette.background, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("BATAL", color = palette.textSecondary)
+                }
+            },
+            containerColor = palette.surfaceVariant
+        )
+    }
+
     if (showChangelogDialog) {
         AlertDialog(
             onDismissRequest = { showChangelogDialog = false },
@@ -2996,7 +3174,12 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.56: Lyrics Cache Invalidation & Direct Refresh Button:\n" +
+                        text = "• v1.0.57: Chinese Pinyin Engine, Behavior Export/Import & Song Affinity Feed:\n" +
+                                "  - Modul Pinyin Bahasa Cina: Transliterasi karakter Hanzi ke huruf alfabet Pinyin secara otomatis jika toggle Romaji aktif.\n" +
+                                "  - Tombol '🔄 REFRESH LIRIK' diposisikan tepat di sebelah kiri tombol Romaji di bar sub-header lirik agar mudah diakses.\n" +
+                                "  - Fitur Ekspor & Impor Profil Selera di Settings: Pindah device tanpa kehilangan playlist, lagu favorit, tema, dan preferensi.\n" +
+                                "  - Algoritma Rekomendasi Berbasis Lagu Yang Sering Diputar: Feed Home menyajikan track serupa ('Mirip [Judul Lagu]') dari kebiasaan mendengar lagu aktif.\n\n" +
+                                "• v1.0.56: Lyrics Cache Invalidation & Direct Refresh Button:\n" +
                                 "  - Tombol '🔄 REFRESH LIRIK' langsung di player lirik: menghapus cache lokal lama yang sempat keliru dan memaksa query ulang lirik sinkron asli ke LRCLIB.\n" +
                                 "  - Label status lirik dinamis: menampilkan '📜 LIRIK SYNC' untuk karaoke tersinkronisasi dan '📜 LIRIK' jika lirik teks biasa.\n" +
                                 "  - Korean Hangul Support & Japanese Kuromoji Tokenizer terintegrasi penuh.\n\n" +

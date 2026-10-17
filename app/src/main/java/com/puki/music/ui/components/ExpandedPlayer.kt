@@ -266,7 +266,7 @@ fun ExpandedPlayerModal(
                     }
                 }
 
-                // Sub-Bar Khusus Tab Lirik: Tombol Toggle Romaji Terpisah & Nyaman Ditekan
+                // Sub-Bar Khusus Tab Lirik: Tombol Refresh Lirik (Kiri) & Tombol Toggle Romaji (Kanan)
                 if (playerCenterMode == 1) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -274,6 +274,30 @@ fun ExpandedPlayerModal(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Tombol Refresh Lirik (di sebelah kiri tombol Romaji)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.surfaceVariant)
+                                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    LyricsService.clearCache(context, track.id)
+                                    lyricsResult = null
+                                    reloadLyricsTrigger++
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "🔄 REFRESH LIRIK",
+                                color = palette.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Tombol Toggle Romaji ON/OFF
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -540,36 +564,6 @@ fun ExpandedPlayerModal(
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                 ) {
                                     Text("COBA LAGI", color = palette.background, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-
-                        // Tombol floating refresh cache lirik jika lirik yang ter-cache salah/tidak sinkron
-                        if (lyricsResult != null) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp),
-                                contentAlignment = Alignment.BottomEnd
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(palette.surface.copy(alpha = 0.85f))
-                                        .border(1.dp, palette.border.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            LyricsService.clearCache(context, track.id)
-                                            lyricsResult = null
-                                            reloadLyricsTrigger++
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = "🔄 REFRESH LIRIK",
-                                        color = palette.textSecondary,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
                                 }
                             }
                         }

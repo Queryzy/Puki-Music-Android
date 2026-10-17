@@ -234,7 +234,37 @@ class LocalMusicStore(private val context: Context) {
 
     fun getBehaviorFeedSections(): List<BehaviorFeedSection> {
         val topArtists = getUserTopArtists(5)
+        val freqTracks = getFrequentlyPlayed(10)
         val sections = mutableListOf<BehaviorFeedSection>()
+
+        val topSong1 = freqTracks.firstOrNull()
+        val topSong2 = freqTracks.getOrNull(1)
+
+        if (topSong1 != null) {
+            // Rekomendasi berdasarkan lagu yang paling sering diputar
+            val songQuery = "${topSong1.artist} ${topSong1.title} mix audio"
+            sections.add(
+                BehaviorFeedSection(
+                    id = "song_affinity_1",
+                    title = "Mirip '${topSong1.title}'",
+                    subtitle = "Lagu yang cocok dengan track yang paling sering kamu putar",
+                    query = songQuery,
+                    reason = "Berdasarkan '${topSong1.title}' oleh ${topSong1.artist}"
+                )
+            )
+
+            if (topSong2 != null && !topSong2.artist.equals(topSong1.artist, ignoreCase = true)) {
+                sections.add(
+                    BehaviorFeedSection(
+                        id = "song_affinity_2",
+                        title = "Mirip '${topSong2.title}'",
+                        subtitle = "Rekomendasi track senada untuk seleramu",
+                        query = "${topSong2.artist} ${topSong2.title} mix songs",
+                        reason = "Sering kamu putar belakangan ini"
+                    )
+                )
+            }
+        }
 
         if (topArtists.isNotEmpty()) {
             val top1 = topArtists[0].name
@@ -729,6 +759,222 @@ class LocalMusicStore(private val context: Context) {
 
     fun saveThemeName(name: String) {
         prefs.edit().putString(KEY_THEME, name).apply()
+    }
+
+    // ── Export & Import User Behavior Profile (Cross-Device Sync) ───────────
+
+    fun exportBehaviorJson(): String {
+        val root = JSONObject()
+        root.put("version", 1)
+        root.put("exportedAt", System.currentTimeMillis())
+
+        // 1. Playlists Meta & Playlist Tracks
+        val playlists = getPlaylists()
+        val plArr = JSONArray()
+        for (pl in playlists) {
+            val plObj = JSONObject().apply {
+                put("id", pl.id)
+                put("name", pl.name)
+                put("autoDownload", pl.autoDownload)
+                val tracks = getPlaylistTracks(pl.id)
+                val trArr = JSONArray()
+                for (t in tracks) {
+                    trArr.put(JSONObject().apply {
+                        put("id", t.id)
+                        put("title", t.title)
+                        put("artist", t.artist)
+                        put("duration", t.durationSeconds)
+                        put("thumbnailUrl", t.thumbnailUrl)
+                        put("viewCount", t.viewCount)
+                        put("likeCount", t.likeCount)
+                    })
+                }
+                put("tracks", trArr)
+            }
+            plArr.put(plObj)
+        }
+        root.put("playlists", plArr)
+
+        // 2. Favorites / Liked Songs
+        val favs = getFavorites()
+        val favArr = JSONArray()
+        for (f in favs) {
+            favArr.put(JSONObject().apply {
+                put("id", f.id)
+                put("title", f.title)
+                put("artist", f.artist)
+                put("duration", f.durationSeconds)
+                put("thumbnailUrl", f.thumbnailUrl)
+                put("viewCount", f.viewCount)
+                put("likeCount", f.likeCount)
+            })
+        }
+        root.put("favorites", favArr)
+
+        // 3. Play History & Listening Behavior (Most Played)
+        root.put("play_history", JSONArray(prefs.getString(KEY_PLAY_HISTORY, "[]") ?: "[]"))
+
+        // 4. Recent Searches
+        root.put("recent_searches", JSONArray(prefs.getString(KEY_SEARCHES, "[]") ?: "[]"))
+
+        // 5. Settings Preferences
+        root.put("app_theme", getThemeName())
+        root.put("auto_download_liked", isAutoDownloadLikedEnabled())
+        root.put("auto_download_network", getAutoDownloadNetworkPreference().name)
+
+        return root.toString(2)
+    }
+
+    fun importBehaviorJson(jsonStr: String): Result<Int> {
+        return runCatching {
+            val root = JSONObject(jsonStr)
+
+            // 1. Playlists & Tracks
+            if (root.has("playlists")) {
+                val plArr = root.getJSONArray("playlists")
+                val currentPlaylists = getPlaylists().toMutableList()
+                for (i in 0 until plArr.length()) {
+                    val plObj = plArr.getJSONObject(i)
+                    val plId = plObj.getString("id")
+                    val plName = plObj.getString("name")
+                    val autoDownload = plObj.optBoolean("autoDownload", false)
+
+                    // Restore playlist tracks
+                    val existingTr = getPlaylistTracks(plId).toMutableList()
+                    if (plObj.has("tracks")) {
+                        val trArr = plObj.getJSONArray("tracks")
+                        val seenIds = existingTr.map { normalizeId(it.id) }.toMutableSet()
+                        for (j in 0 until trArr.length()) {
+                            val tObj = trArr.getJSONObject(j)
+                            val t = Track(
+                                id = tObj.getString("id"),
+                                title = tObj.getString("title"),
+                                artist = tObj.getString("artist"),
+                                durationSeconds = tObj.optLong("duration", 0L),
+                                thumbnailUrl = tObj.optString("thumbnailUrl", ""),
+                                viewCount = tObj.optLong("viewCount", 0L),
+                                likeCount = tObj.optLong("likeCount", 0L)
+                            )
+                            if (!seenIds.contains(normalizeId(t.id))) {
+                                seenIds.add(normalizeId(t.id))
+                                existingTr.add(t)
+                            }
+                        }
+                        val array = JSONArray()
+                        for (track in existingTr) {
+                            val obj = JSONObject()
+                            obj.put("id", track.id)
+                            obj.put("title", track.title)
+                            obj.put("artist", track.artist)
+                            obj.put("duration", track.durationSeconds)
+                            obj.put("thumbnailUrl", track.thumbnailUrl)
+                            obj.put("viewCount", track.viewCount)
+                            obj.put("likeCount", track.likeCount)
+                            array.put(obj)
+                        }
+                        prefs.edit().putString("${KEY_PL_TRACKS}_$plId", array.toString()).apply()
+                    }
+
+                    // Merge or create playlist
+                    val existingPlIdx = currentPlaylists.indexOfFirst { it.id == plId }
+                    if (existingPlIdx >= 0) {
+                        currentPlaylists[existingPlIdx] = currentPlaylists[existingPlIdx].copy(
+                            trackCount = existingTr.size,
+                            autoDownload = autoDownload
+                        )
+                    } else {
+                        currentPlaylists.add(Playlist(plId, plName, existingTr.size, autoDownload))
+                    }
+                }
+
+                val plMetaArr = JSONArray()
+                for (pl in currentPlaylists) {
+                    val obj = JSONObject()
+                    obj.put("id", pl.id)
+                    obj.put("name", pl.name)
+                    obj.put("autoDownload", pl.autoDownload)
+                    plMetaArr.put(obj)
+                }
+                prefs.edit().putString(KEY_PLAYLISTS, plMetaArr.toString()).apply()
+            }
+
+            // 2. Favorites / Liked Songs
+            var mergedFavsCount = 0
+            if (root.has("favorites")) {
+                val favArr = root.getJSONArray("favorites")
+                val curFavs = getFavorites().toMutableList()
+                val seenFavIds = curFavs.map { normalizeId(it.id) }.toMutableSet()
+                for (i in 0 until favArr.length()) {
+                    val fObj = favArr.getJSONObject(i)
+                    val t = Track(
+                        id = fObj.getString("id"),
+                        title = fObj.getString("title"),
+                        artist = fObj.getString("artist"),
+                        durationSeconds = fObj.optLong("duration", 0L),
+                        thumbnailUrl = fObj.optString("thumbnailUrl", ""),
+                        viewCount = fObj.optLong("viewCount", 0L),
+                        likeCount = fObj.optLong("likeCount", 0L)
+                    )
+                    if (!seenFavIds.contains(normalizeId(t.id))) {
+                        seenFavIds.add(normalizeId(t.id))
+                        curFavs.add(t)
+                        mergedFavsCount++
+                    }
+                }
+                saveFavoritesList(curFavs)
+            }
+
+            // 3. Play History (Merge based on playCount and lastPlayed)
+            if (root.has("play_history")) {
+                val impHistory = root.getJSONArray("play_history")
+                val curHistoryStr = prefs.getString(KEY_PLAY_HISTORY, "[]") ?: "[]"
+                val curHistory = JSONArray(curHistoryStr)
+                val map = mutableMapOf<String, JSONObject>()
+
+                for (i in 0 until curHistory.length()) {
+                    val obj = curHistory.getJSONObject(i)
+                    map[normalizeId(obj.getString("id"))] = obj
+                }
+
+                for (i in 0 until impHistory.length()) {
+                    val obj = impHistory.getJSONObject(i)
+                    val id = normalizeId(obj.getString("id"))
+                    if (map.containsKey(id)) {
+                        val existing = map[id]!!
+                        val totalPlays = existing.optInt("playCount", 1) + obj.optInt("playCount", 1)
+                        val latest = maxOf(existing.optLong("lastPlayed", 0L), obj.optLong("lastPlayed", 0L))
+                        existing.put("playCount", totalPlays)
+                        existing.put("lastPlayed", latest)
+                    } else {
+                        map[id] = obj
+                    }
+                }
+
+                val mergedList = map.values.sortedWith(
+                    compareByDescending<JSONObject> { it.optInt("playCount", 1) }
+                        .thenByDescending { it.optLong("lastPlayed", 0L) }
+                ).take(50)
+
+                val outArr = JSONArray()
+                for (item in mergedList) outArr.put(item)
+                prefs.edit().putString(KEY_PLAY_HISTORY, outArr.toString()).apply()
+            }
+
+            // 4. Preferences & Theme
+            if (root.has("app_theme")) {
+                saveThemeName(root.getString("app_theme"))
+            }
+            if (root.has("auto_download_liked")) {
+                setAutoDownloadLikedEnabled(root.getBoolean("auto_download_liked"))
+            }
+            if (root.has("auto_download_network")) {
+                try {
+                    setAutoDownloadNetworkPreference(NetworkDownloadPreference.valueOf(root.getString("auto_download_network")))
+                } catch (_: Exception) {}
+            }
+
+            mergedFavsCount
+        }
     }
 
     companion object {

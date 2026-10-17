@@ -17,10 +17,64 @@ object RomajiHelper {
         }
     }
 
+    // Reflection-based ICU Transliterator for Han/Chinese Pinyin conversion
+    private val chineseTransliterator: Any? by lazy {
+        try {
+            val clazz = Class.forName("android.icu.text.Transliterator")
+            val getInstance = clazz.getMethod("getInstance", String::class.java)
+            getInstance.invoke(null, "Han-Latin; Latin-Ascii")
+        } catch (_: Throwable) {
+            try {
+                val clazz = Class.forName("android.icu.text.Transliterator")
+                val getInstance = clazz.getMethod("getInstance", String::class.java)
+                getInstance.invoke(null, "Any-Latin; Latin-Ascii")
+            } catch (_: Throwable) {
+                null
+            }
+        }
+    }
+
+    private val transliterateMethod: java.lang.reflect.Method? by lazy {
+        try {
+            chineseTransliterator?.javaClass?.getMethod("transliterate", String::class.java)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun hanziToPinyin(text: String): String {
+        return try {
+            val method = transliterateMethod
+            val inst = chineseTransliterator
+            if (method != null && inst != null) {
+                method.invoke(inst, text) as? String ?: text
+            } else {
+                text
+            }
+        } catch (_: Throwable) {
+            text
+        }
+    }
+
+    private fun containsHan(text: String): Boolean {
+        for (c in text) {
+            val ub = Character.UnicodeBlock.of(c)
+            if (ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
+                ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
+                ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
+                ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
     /**
-     * Converts full CJK text (Japanese Kanji/Kana & Korean Hangul) to clean Romaji (Latin Alphabet).
+     * Converts full CJK text (Japanese Kanji/Kana, Korean Hangul & Chinese Hanzi Pinyin) to clean Romaji (Latin Alphabet).
      * Japanese Example: "それでもこの世界で生きる意味探して" -> "soredemo kono sekai de ikiru imi sagashite"
      * Korean Example: "너의 입술로 말을 해줘" -> "neoui ipsulro maleul haejwo"
+     * Chinese Example: "为你我受冷风吹" -> "wei ni wo shou leng feng chui"
      */
     fun toRomaji(text: String): String {
         if (text.isBlank()) return text
@@ -28,7 +82,7 @@ object RomajiHelper {
         val processedKorean = hangulToRomaji(text)
 
         // 2. Process Japanese Kanji & Kana using Kuromoji Tokenizer
-        return try {
+        val japaneseResult = try {
             val tokens: List<Token> = tokenizer.tokenize(processedKorean)
             val result = StringBuilder()
 
@@ -46,6 +100,13 @@ object RomajiHelper {
         } catch (e: Throwable) {
             Log.w(TAG, "Romaji parsing fallback: ${e.message}")
             kanaToRomaji(processedKorean)
+        }
+
+        // 3. Process remaining Chinese Hanzi characters (if any Hanzi was not in Japanese IPADIC dictionary)
+        return if (containsHan(japaneseResult)) {
+            cleanRomajiSpacing(hanziToPinyin(japaneseResult))
+        } else {
+            japaneseResult
         }
     }
 
