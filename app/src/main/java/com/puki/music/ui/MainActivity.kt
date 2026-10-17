@@ -2292,11 +2292,10 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.33: YouTube Music Stats (Plays & Popularity Integration):\n" +
-                               "  - Search Results & Tracklists: Subtitle trek kini menampilkan play count resmi persis YouTube Music (misal: Radiohead • 217M plays • 04:59).\n" +
-                               "  - Expanded Player Badge: Chip badge popularitas menampilkan total play count dan likes YouTube realtime di bawah nama artis.\n" +
-                               "  - Branding Signature: Menambahkan identitas 'by Nands' pada Settings & App Info.\n" +
-                               "  - Instant Metrics: Angka popularitas dimuat 0ms tanpa overhead network tambahan.\n" +
+                        text = "• v1.0.34: Album Tracks Live Plays Resolution:\n" +
+                               "  - Trek di dalam album kini otomatis menampilkan jumlah plays YouTube secara background asinkron.\n" +
+                               "  - Zero lag saat scrolling modal album dan view count otomatis update begitu data didapat.\n" +
+                               "• v1.0.33: YouTube Music Stats (Plays & Popularity Integration) & by Nands Branding.\n" +
                                "• v1.0.32: Fix ANR Watchdog & Responsive Instant Playback.\n" +
                                "• v1.0.31: Rename package com.puki.music & fix lock screen dropouts.\n" +
                                "• v1.0.30: Production Keystore Signing (RSA 4096-bit).",

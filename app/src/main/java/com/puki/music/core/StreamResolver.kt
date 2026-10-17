@@ -89,13 +89,19 @@ object StreamResolver {
 
             val results = mutableListOf<Track>()
             for (item in playlistExtractor.initialPage.items) {
+                val views = if (item is StreamInfoItem) {
+                    try { item.viewCount } catch (_: Exception) { 0L }
+                } else {
+                    0L
+                }
                 results.add(
                     Track(
                         id = item.url,
                         title = item.name,
                         artist = item.uploaderName ?: "",
                         durationSeconds = item.duration,
-                        thumbnailUrl = item.thumbnails.lastOrNull()?.url.orEmpty()
+                        thumbnailUrl = item.thumbnails.lastOrNull()?.url.orEmpty(),
+                        viewCount = views
                     )
                 )
             }

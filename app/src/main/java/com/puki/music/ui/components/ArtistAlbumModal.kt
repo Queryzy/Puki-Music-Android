@@ -33,7 +33,9 @@ import com.puki.music.data.LocalMusicStore
 import com.puki.music.model.Album
 import com.puki.music.model.Track
 import com.puki.music.ui.theme.NuclearPalette
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ArtistAlbumModal(
@@ -93,8 +95,25 @@ fun ArtistAlbumModal(
         isLoadingAlbumTracks = true
         scope.launch {
             val res = StreamResolver.getAlbumTracks(album.url)
-            res.onSuccess {
-                albumTracks = it
+            res.onSuccess { tracks ->
+                albumTracks = tracks
+                // Asynchronously fetch views for album tracks in background so UI stays smooth & views appear
+                launch(Dispatchers.IO) {
+                    tracks.forEachIndexed { index, track ->
+                        if (track.viewCount <= 0L) {
+                            val detail = StreamResolver.resolveAudioStreamDetailed(track.id)
+                            detail.onSuccess { d ->
+                                if (d.viewCount > 0L) {
+                                    withContext(Dispatchers.Main) {
+                                        albumTracks = albumTracks.mapIndexed { i, t ->
+                                            if (i == index) t.copy(viewCount = d.viewCount, likeCount = d.likeCount) else t
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }.onFailure {
                 Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
             }
