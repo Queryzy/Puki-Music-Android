@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
 import com.puki.music.core.LyricsResult
 import com.puki.music.core.LyricsService
+import com.puki.music.core.RomajiHelper
 import coil.compose.AsyncImage
 import com.puki.music.data.LocalMusicStore
 import com.puki.music.model.RepeatMode
@@ -74,6 +75,7 @@ fun ExpandedPlayerModal(
     var playerCenterMode by remember { mutableIntStateOf(0) } // 0 = Artwork, 1 = Lirik, 2 = Antrean
     var lyricsResult by remember(track.id) { mutableStateOf<LyricsResult?>(null) }
     var isLoadingLyrics by remember(track.id) { mutableStateOf(false) }
+    var useRomajiLyrics by remember { mutableStateOf(false) }
     var lyricsError by remember(track.id) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
@@ -202,55 +204,80 @@ fun ExpandedPlayerModal(
 
                 // Mode Switcher: [ ARTWORK ] vs [ LIRIK SYNC ] vs [ ANTREAN ]
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surfaceVariant)
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (playerCenterMode == 0) palette.primary else palette.surfaceVariant)
-                            .clickable { playerCenterMode = 0 }
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surfaceVariant)
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = "🎵 ARTWORK",
-                            color = if (playerCenterMode == 0) palette.background else palette.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (playerCenterMode == 0) palette.primary else palette.surfaceVariant)
+                                .clickable { playerCenterMode = 0 }
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "🎵 ARTWORK",
+                                color = if (playerCenterMode == 0) palette.background else palette.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (playerCenterMode == 1) palette.primary else palette.surfaceVariant)
+                                .clickable { playerCenterMode = 1 }
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "📜 LIRIK SYNC",
+                                color = if (playerCenterMode == 1) palette.background else palette.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (playerCenterMode == 2) palette.primary else palette.surfaceVariant)
+                                .clickable { playerCenterMode = 2 }
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = if (playbackQueue.isNotEmpty()) "📑 ANTREAN (${playbackQueue.size})" else "📑 ANTREAN",
+                                color = if (playerCenterMode == 2) palette.background else palette.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (playerCenterMode == 1) palette.primary else palette.surfaceVariant)
-                            .clickable { playerCenterMode = 1 }
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            text = "📜 LIRIK SYNC",
-                            color = if (playerCenterMode == 1) palette.background else palette.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (playerCenterMode == 2) palette.primary else palette.surfaceVariant)
-                            .clickable { playerCenterMode = 2 }
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            text = if (playbackQueue.isNotEmpty()) "📑 ANTREAN (${playbackQueue.size})" else "📑 ANTREAN",
-                            color = if (playerCenterMode == 2) palette.background else palette.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    // Romaji Toggle Button (hanya muncul saat di Tab LIRIK SYNC)
+                    if (playerCenterMode == 1) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (useRomajiLyrics) palette.primary else palette.surfaceVariant)
+                                .border(1.dp, if (useRomajiLyrics) palette.primary else palette.border, RoundedCornerShape(6.dp))
+                                .clickable { useRomajiLyrics = !useRomajiLyrics }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = if (useRomajiLyrics) "🔤 ROMAJI ON" else "🔤 ROMAJI",
+                                color = if (useRomajiLyrics) palette.background else palette.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                 }
 
@@ -439,6 +466,7 @@ fun ExpandedPlayerModal(
                             ) {
                                 itemsIndexed(lines) { idx, line ->
                                     val isActive = idx == activeIndex
+                                    val displayText = if (useRomajiLyrics) RomajiHelper.toRomaji(line.text) else line.text
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -451,7 +479,7 @@ fun ExpandedPlayerModal(
                                             .padding(horizontal = 10.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            text = line.text,
+                                            text = displayText,
                                             color = if (isActive) palette.primary else palette.textSecondary.copy(alpha = 0.65f),
                                             fontSize = if (isActive) 16.sp else 13.sp,
                                             fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Normal,
@@ -463,6 +491,8 @@ fun ExpandedPlayerModal(
                             }
                         } else if (lyricsResult != null && lyricsResult!!.plainLyrics != null) {
                             // Plain lyrics fallback
+                            val plainText = lyricsResult!!.plainLyrics!!
+                            val displayPlain = if (useRomajiLyrics) RomajiHelper.toRomaji(plainText) else plainText
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -470,7 +500,7 @@ fun ExpandedPlayerModal(
                                     .padding(8.dp)
                             ) {
                                 Text(
-                                    text = lyricsResult!!.plainLyrics!!,
+                                    text = displayPlain,
                                     color = palette.textPrimary,
                                     fontSize = 13.sp,
                                     lineHeight = 22.sp

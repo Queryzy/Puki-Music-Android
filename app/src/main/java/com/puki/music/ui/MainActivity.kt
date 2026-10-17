@@ -2412,7 +2412,9 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "• v1.0.47: Universal Auto-Heal Metrics for Imported Playlists:\n" +
+                        text = "• v1.0.48: Real-Time Romaji Transliteration Toggle:\n" +
+                                "  - Tombol toggle [ 🔤 ROMAJI ] di tab LIRIK SYNC: otomatis mengubah lirik Jepang (Kanji & Kana) / Korea menjadi teks alfabet Latin (Romaji).\n\n" +
+                                "• v1.0.47: Universal Auto-Heal Metrics for Imported Playlists:\n" +
                                 "  - Menambahkan crawler background auto-heal metrik plays & badge POPULER untuk seluruh lagu di playlist yang diimpor dari Spotify/YouTube.\n\n" +
                                 "• v1.0.46: Auto Fallback Search & Auto-Skip Broken Tracks (1:1 YT Music):\n" +
                                 "  - Jika track dihapus/region lock (video not found), otomatis fallback search track alternatif di YT.\n" +
