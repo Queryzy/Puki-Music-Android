@@ -45,9 +45,14 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Brush
 import coil.compose.AsyncImage
+import com.puki.music.R
 import com.google.common.util.concurrent.ListenableFuture
 import com.puki.music.core.AppUpdateManager
+import com.puki.music.core.DeezerRepository
 import com.puki.music.core.OfflineManager
 import com.puki.music.core.PlaybackService
 import com.puki.music.core.PlaybackStateManager
@@ -65,6 +70,7 @@ import com.puki.music.model.Track
 import com.puki.music.ui.components.*
 import com.puki.music.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -149,6 +155,8 @@ fun NuclearMainScreen(
     val errorMessage by PlaybackStateManager.errorMessage.collectAsState()
     val repeatMode by PlaybackStateManager.repeatMode.collectAsState()
     val currentQueue by PlaybackStateManager.currentQueue.collectAsState()
+    val playbackPositionMs by PlaybackStateManager.playbackPositionMs.collectAsState()
+    val playbackDurationMs by PlaybackStateManager.playbackDurationMs.collectAsState()
     var isMixPlayActive by remember { mutableStateOf(false) }
 
     // Dialog & Modal states
@@ -458,32 +466,48 @@ fun NuclearMainScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Box(
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_app_logo),
+                            contentDescription = "Puki Logo",
                             modifier = Modifier
-                                .size(10.dp)
+                                .size(28.dp)
                                 .clip(CircleShape)
-                                .background(if (isPlaying) palette.success else palette.secondary)
                         )
-                        Text(
-                            text = "PUKI MUSIC",
-                            color = palette.textPrimary,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 15.sp,
-                            letterSpacing = 1.sp
-                        )
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        IconButton(onClick = { showThemeDialog = true }) {
-                            Icon(
-                                Icons.Default.Palette,
-                                contentDescription = "Themes",
-                                tint = palette.secondary
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Puki ",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Music",
+                                style = androidx.compose.ui.text.TextStyle(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFFFCA766),
+                                            Color(0xFFF07575),
+                                            Color(0xFFE8537D)
+                                        )
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    letterSpacing = 0.5.sp
+                                )
                             )
                         }
                     }
+
+                    // Status Indicator
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(if (isPlaying) palette.success else palette.secondary.copy(alpha = 0.5f))
+                    )
                 }
 
                 if (errorMessage != null) {
@@ -518,10 +542,13 @@ fun NuclearMainScreen(
                         track = activeTrack!!,
                         isPlaying = isPlaying,
                         isResolving = isResolvingStream,
+                        positionMs = playbackPositionMs,
+                        durationMs = playbackDurationMs,
                         palette = palette,
                         onClick = { showExpandedPlayer = true },
                         onPlayPauseToggle = { PlaybackStateManager.togglePlayPause() },
-                        onNextClick = { PlaybackStateManager.playNext() }
+                        onNextClick = { PlaybackStateManager.playNext() },
+                        onSeekTo = { PlaybackStateManager.seekTo(it) }
                     )
                 }
 
@@ -611,7 +638,29 @@ fun NuclearMainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (currentTab) {
+            if (viewingArtist != null || viewingAlbum != null) {
+                ArtistAlbumModal(
+                    artistName = viewingAlbum?.artist ?: viewingArtist!!,
+                    initialAlbum = viewingAlbum,
+                    palette = palette,
+                    store = store,
+                    downloadingIds = downloadingTrackIds,
+                    activeTrack = activeTrack,
+                    favoriteIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
+                    onTrackClick = { track, list -> playTrack(track, list) },
+                    onMixPlayClick = { list -> startMixPlay(list) },
+                    onDownloadTrack = { toggleOfflineDownload(it) },
+                    onDownloadAlbum = { tracks, name -> downloadPlaylist(tracks, name) },
+                    onAddToPlaylist = { playlistToAddTo = it },
+                    onFavoriteToggle = { handleFavoriteToggle(it) },
+                    onClose = {
+                        viewingArtist = null
+                        viewingAlbum = null
+                    }
+                )
+            } else {
+                when (currentTab) {
                 0 -> DashboardTab(
                     palette = palette,
                     activeTrack = activeTrack,
@@ -728,11 +777,14 @@ fun NuclearMainScreen(
                         offlineTracks = store.getOfflineTracks()
                         Toast.makeText(context, "Seluruh musik offline dibersihkan", Toast.LENGTH_SHORT).show()
                     },
+                    currentThemeId = currentThemeId,
+                    onThemeChanged = onThemeChanged,
                     onFavoritesChanged = {
                         favoritesList = store.getFavorites()
                         playlistsList = store.getPlaylists()
                     }
                 )
+            }
             }
         }
     }
@@ -875,29 +927,6 @@ fun NuclearMainScreen(
         )
     }
 
-    if (viewingArtist != null || viewingAlbum != null) {
-        ArtistAlbumModal(
-            artistName = viewingAlbum?.artist ?: viewingArtist!!,
-            initialAlbum = viewingAlbum,
-            palette = palette,
-            store = store,
-            downloadingIds = downloadingTrackIds,
-            activeTrack = activeTrack,
-            favoriteIds = favoriteTrackIds,
-            offlineTrackIds = offlineTrackIds,
-            onTrackClick = { track, list -> playTrack(track, list) },
-            onMixPlayClick = { list -> startMixPlay(list) },
-            onDownloadTrack = { toggleOfflineDownload(it) },
-            onDownloadAlbum = { tracks, name -> downloadPlaylist(tracks, name) },
-            onAddToPlaylist = { playlistToAddTo = it },
-            onFavoriteToggle = { handleFavoriteToggle(it) },
-            onClose = {
-                viewingArtist = null
-                viewingAlbum = null
-            }
-        )
-    }
-
     if (availableUpdate != null) {
         UpdateDialog(
             palette = palette,
@@ -938,9 +967,28 @@ fun DashboardTab(
     val activeSection = sections.firstOrNull { it.id == selectedSectionId } ?: sections.first()
 
     var trendingTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var deezerTopCharts by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var deezerTopAlbums by remember { mutableStateOf<List<com.puki.music.model.DeezerAlbum>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    // Load Deezer Clean Official Charts & Albums for Dashboard
+    LaunchedEffect(Unit) {
+        val dzRes = DeezerRepository.getDashboardCharts(context)
+        dzRes.onSuccess { dzData ->
+            deezerTopCharts = dzData.topTracks.map { dz ->
+                Track(
+                    id = "dz_${dz.id}",
+                    title = dz.title,
+                    artist = dz.artistName,
+                    durationSeconds = dz.durationSeconds,
+                    thumbnailUrl = dz.coverUrl
+                )
+            }
+            deezerTopAlbums = dzData.topAlbums
+        }
+    }
 
     LaunchedEffect(activeSection.query) {
         isLoading = true
@@ -1161,6 +1209,174 @@ fun DashboardTab(
             }
         }
 
+        // ── Section: Tangga Lagu Terpopuler Resmi (Deezer Top Charts HD) ──
+        if (deezerTopCharts.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.tertiary)
+                            )
+                            Text(
+                                text = "TANGGA LAGU RESMI (TOP CHARTS)",
+                                color = palette.tertiary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Text(
+                            text = "HD 1000px Cover",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(deezerTopCharts.take(15)) { track ->
+                            Card(
+                                modifier = Modifier
+                                    .width(130.dp)
+                                    .clickable { onTrackClick(track, deezerTopCharts) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                                border = BorderStroke(1.dp, palette.border)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    AsyncImage(
+                                        model = track.thumbnailUrl,
+                                        contentDescription = track.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = track.title,
+                                        color = palette.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = track.artist,
+                                        color = palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Section: Album Rilis Baru Resmi (Deezer New Albums) ──
+        if (deezerTopAlbums.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.secondary)
+                            )
+                            Text(
+                                text = "ALBUM RILIS TERBARU (OFFICIAL)",
+                                color = palette.secondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Text(
+                            text = "Katalog Resmi",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(deezerTopAlbums.take(15)) { album ->
+                            Card(
+                                modifier = Modifier
+                                    .width(130.dp)
+                                    .clickable {
+                                        onArtistClick?.invoke(album.artistName)
+                                    },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                                border = BorderStroke(1.dp, palette.border)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    AsyncImage(
+                                        model = album.coverUrl,
+                                        contentDescription = album.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = album.title,
+                                        color = palette.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = album.artistName,
+                                        color = palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Card: Mix Saya (Berdasarkan Yang Sering Diputar) ──
         item {
             val myMixTracks = remember(activeTrack) { store.getMyMixTracks() }
@@ -1356,9 +1572,12 @@ fun SearchTab(
     onAlbumClick: (Album) -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
-    var searchMode by remember { mutableIntStateOf(0) } // 0 = Lagu, 1 = Album & EP
-    var searchResults by remember { mutableStateOf<List<Track>>(emptyList()) }
+    // 0 = Semua (Unified Top Results), 1 = Lagu Resmi (Deezer), 2 = YouTube / Remix, 3 = Album
+    var searchFilter by remember { mutableIntStateOf(0) }
+    var officialTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var youtubeTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var albumResults by remember { mutableStateOf<List<Album>>(emptyList()) }
+    var topArtistResult by remember { mutableStateOf<com.puki.music.model.DeezerArtist?>(null) }
     var isSearching by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1368,17 +1587,60 @@ fun SearchTab(
         isSearching = true
         store.recordSearch(query.trim())
         scope.launch {
-            if (searchMode == 0) {
-                val res = StreamResolver.searchTracks(query)
-                res.onSuccess {
-                    searchResults = it
-                }
-            } else {
-                val res = StreamResolver.searchAlbums(query)
-                res.onSuccess {
-                    albumResults = it
+            // Search Deezer Tracks + YouTube Streams + Deezer Albums + Deezer Artists in parallel
+            val dzTrackJob = async(Dispatchers.IO) { DeezerRepository.searchCleanTracks(context, query.trim(), limit = 30) }
+            val ytTrackJob = async(Dispatchers.IO) { StreamResolver.searchTracks(query.trim()) }
+            val dzAlbumJob = async(Dispatchers.IO) { DeezerRepository.searchCleanAlbums(context, query.trim(), limit = 20) }
+            val dzArtistJob = async(Dispatchers.IO) { DeezerRepository.searchCleanArtists(context, query.trim(), limit = 5) }
+
+            val dzTrackRes = dzTrackJob.await()
+            val ytTrackRes = ytTrackJob.await()
+            val dzAlbumRes = dzAlbumJob.await()
+            val dzArtistRes = dzArtistJob.await()
+
+            // 1. Official Tracks (Deezer)
+            dzTrackRes.onSuccess { list ->
+                officialTracks = list.map { dz ->
+                    Track(
+                        id = "dz_${dz.id}",
+                        title = dz.title,
+                        artist = dz.artistName,
+                        durationSeconds = dz.durationSeconds,
+                        thumbnailUrl = dz.coverUrl
+                    )
                 }
             }
+
+            // 2. YouTube Streams
+            ytTrackRes.onSuccess { list ->
+                youtubeTracks = list
+            }
+
+            // 3. Official Albums
+            dzAlbumRes.onSuccess { list ->
+                if (list.isNotEmpty()) {
+                    albumResults = list.map { dz ->
+                        Album(
+                            id = "dz_${dz.id}",
+                            title = dz.title,
+                            artist = dz.artistName,
+                            trackCount = dz.trackCount.toLong(),
+                            thumbnailUrl = dz.coverUrl,
+                            url = "dz_${dz.id}"
+                        )
+                    }
+                } else {
+                    // Fallback to youtube albums if deezer empty
+                    val ytAlbum = StreamResolver.searchAlbums(query.trim())
+                    ytAlbum.onSuccess { albumResults = it }
+                }
+            }
+
+            // 4. Top Artist Match
+            dzArtistRes.onSuccess { list ->
+                topArtistResult = list.firstOrNull()
+            }
+
             isSearching = false
         }
     }
@@ -1392,7 +1654,7 @@ fun SearchTab(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(if (searchMode == 0) "Cari lagu, artis, atau judul..." else "Cari nama album atau penyanyi...", color = palette.textSecondary) },
+            placeholder = { Text("Telusuri musik...", color = palette.textSecondary) },
             singleLine = true,
             trailingIcon = {
                 IconButton(onClick = { performSearch() }) {
@@ -1411,51 +1673,34 @@ fun SearchTab(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Mode Selector: [ LAGU ] vs [ ALBUM & EP ]
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(palette.surfaceVariant)
-                .padding(4.dp)
+        // Horizontal Category Filter (Nuclear OmniSource Pattern: Semua, Lagu Resmi, YouTube, Album)
+        val filterLabels = listOf("SEMUA", "LAGU RESMI (HD)", "YOUTUBE / REMIX", "ALBUM")
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (searchMode == 0) palette.primary else palette.surfaceVariant)
-                    .clickable {
-                        searchMode = 0
-                        if (query.isNotBlank() && searchResults.isEmpty()) performSearch()
-                    }
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "LAGU",
-                    color = if (searchMode == 0) palette.background else palette.textSecondary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (searchMode == 1) palette.primary else palette.surfaceVariant)
-                    .clickable {
-                        searchMode = 1
-                        if (query.isNotBlank() && albumResults.isEmpty()) performSearch()
-                    }
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "ALBUM & EP",
-                    color = if (searchMode == 1) palette.background else palette.textSecondary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
+            items(filterLabels.size) { idx ->
+                val isSel = searchFilter == idx
+                FilterChip(
+                    selected = isSel,
+                    onClick = {
+                        searchFilter = idx
+                        if (query.isNotBlank() && officialTracks.isEmpty() && youtubeTracks.isEmpty()) performSearch()
+                    },
+                    label = {
+                        Text(
+                            text = filterLabels[idx],
+                            fontSize = 11.sp,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = palette.primary,
+                        selectedLabelColor = palette.background,
+                        containerColor = palette.surfaceVariant,
+                        labelColor = palette.textSecondary
+                    ),
+                    border = BorderStroke(1.dp, if (isSel) palette.primary else palette.border)
                 )
             }
         }
@@ -1472,12 +1717,20 @@ fun SearchTab(
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text(if (searchMode == 0) "CARI STREAM LAGU" else "CARI DISKOGRAFI ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Icon(Icons.Default.Search, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("CARI KATALOG LENGKAP", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
 
-            if (searchMode == 0 && searchResults.isNotEmpty()) {
+            val currentActiveList = when (searchFilter) {
+                1 -> officialTracks
+                2 -> youtubeTracks
+                else -> (officialTracks + youtubeTracks)
+            }
+
+            if (currentActiveList.isNotEmpty()) {
                 Button(
-                    onClick = { onMixPlayClick(searchResults) },
+                    onClick = { onMixPlayClick(currentActiveList) },
                     colors = ButtonDefaults.buttonColors(containerColor = palette.secondary),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -1494,44 +1747,8 @@ fun SearchTab(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = palette.primary)
             }
-        } else if (searchMode == 0) {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(searchResults) { track ->
-                    val normId = LocalMusicStore.normalizeId(track.id)
-                    val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
-                    val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                    val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
-                    val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
-
-                    TrackItemCard(
-                        track = track,
-                        isSelected = activeTrack?.id == track.id,
-                        isFavorite = isFav,
-                        isOffline = isOffline,
-                        downloadProgress = trackProgress,
-                        isDownloading = isActivelyDownloading,
-                        playCount = store.getPlayCount(track.id),
-                        palette = palette,
-                        onClick = { onTrackSelected(track, searchResults) },
-                        onArtistClick = onArtistClick,
-                        onFavoriteToggle = {
-                            if (onFavoriteToggle != null) {
-                                onFavoriteToggle(track)
-                            } else {
-                                store.toggleFavorite(track)
-                                onFavoritesChanged()
-                            }
-                        },
-                        onAddToPlaylist = { onAddToPlaylist(track) },
-                        onDownloadClick = { onDownloadClick(track) }
-                    )
-                }
-            }
-        } else {
-            // Album & EP Results
+        } else if (searchFilter == 3) {
+            // ── Tab 3: Khusus Album & EP ──
             if (albumResults.isEmpty() && query.isNotBlank()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Belum ada album ditemukan", color = palette.textSecondary, fontSize = 12.sp)
@@ -1547,13 +1764,13 @@ fun SearchTab(
                                 .fillMaxWidth()
                                 .clickable { onAlbumClick(album) },
                             shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, palette.border)
+                            colors = CardDefaults.cardColors(containerColor = palette.surface),
+                            border = BorderStroke(1.dp, palette.border)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(12.dp),
+                                    .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
@@ -1566,7 +1783,6 @@ fun SearchTab(
                                         .background(Color.Black),
                                     contentScale = ContentScale.Crop
                                 )
-
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = album.title,
@@ -1578,21 +1794,135 @@ fun SearchTab(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "${if (album.trackCount > 0) "${album.trackCount} lagu • " else ""}${album.artist}",
-                                        color = palette.secondary,
+                                        text = "${album.artist} • ${album.trackCount} Lagu",
+                                        color = palette.textSecondary,
                                         fontSize = 11.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
-
                                 Icon(
                                     Icons.Default.ChevronRight,
-                                    contentDescription = "Buka Album",
-                                    tint = palette.primary
+                                    contentDescription = null,
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
+                    }
+                }
+            }
+        } else {
+            // ── Tab 0 (Semua), 1 (Resmi), 2 (YouTube) ──
+            val displayedTracks = when (searchFilter) {
+                1 -> officialTracks
+                2 -> youtubeTracks
+                else -> {
+                    // Unified: Official tracks first, then YouTube streams
+                    val list = mutableListOf<Track>()
+                    list.addAll(officialTracks)
+                    val seen = officialTracks.map { "${it.title.lowercase()}_${it.artist.lowercase()}" }.toSet()
+                    for (yt in youtubeTracks) {
+                        val key = "${yt.title.lowercase()}_${yt.artist.lowercase()}"
+                        if (!seen.contains(key)) list.add(yt)
+                    }
+                    list
+                }
+            }
+
+            if (displayedTracks.isEmpty() && query.isNotBlank()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Lagu tidak ditemukan. Coba ganti tab atau kata kunci.", color = palette.textSecondary, fontSize = 12.sp)
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // If unified view (Semua) and top artist found, show artist banner
+                    if (searchFilter == 0 && topArtistResult != null) {
+                        item {
+                            val art = topArtistResult!!
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onArtistClick(art.name) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                                border = BorderStroke(1.5.dp, palette.primary.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    AsyncImage(
+                                        model = art.pictureUrl,
+                                        contentDescription = art.name,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(CircleShape)
+                                            .border(1.dp, palette.primary, CircleShape)
+                                            .background(Color.Black)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "ARTIS TERBAIK",
+                                            color = palette.primary,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Text(
+                                            text = art.name,
+                                            color = palette.textPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        )
+                                        Text(
+                                            text = "${art.albumCount} Album • Buka Diskografi",
+                                            color = palette.textSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = palette.primary)
+                                }
+                            }
+                        }
+                    }
+
+                    items(displayedTracks) { track ->
+                        val normId = LocalMusicStore.normalizeId(track.id)
+                        val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
+                        val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
+                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
+                        val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
+
+                        TrackItemCard(
+                            track = track,
+                            isSelected = activeTrack?.id == track.id,
+                            isFavorite = isFav,
+                            isOffline = isOffline,
+                            downloadProgress = trackProgress,
+                            isDownloading = isActivelyDownloading,
+                            playCount = store.getPlayCount(track.id),
+                            palette = palette,
+                            onClick = { onTrackSelected(track, displayedTracks) },
+                            onArtistClick = onArtistClick,
+                            onFavoriteToggle = {
+                                if (onFavoriteToggle != null) {
+                                    onFavoriteToggle(track)
+                                } else {
+                                    store.toggleFavorite(track)
+                                    onFavoritesChanged()
+                                }
+                            },
+                            onAddToPlaylist = { onAddToPlaylist(track) },
+                            onDownloadClick = { onDownloadClick(track) }
+                        )
                     }
                 }
             }
@@ -2275,6 +2605,8 @@ fun SettingsTab(
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
     onClearAllOffline: () -> Unit,
+    currentThemeId: NuclearThemeId = NuclearThemeId.MIDNIGHT_GLOW,
+    onThemeChanged: (NuclearThemeId) -> Unit = {},
     onFavoritesChanged: () -> Unit = {}
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
@@ -2310,6 +2642,84 @@ fun SettingsTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // App Version & In-App Update Card
+        item {
+            Text(
+                text = "TEMA & TAMPILAN APLIKASI",
+                color = palette.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    NuclearThemeId.values().forEach { theme ->
+                        val themePal = getNuclearPalette(theme)
+                        val isSelected = currentThemeId == theme
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) themePal.surface else Color.Transparent)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) themePal.primary else palette.border.copy(alpha = 0.5f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable { onThemeChanged(theme) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(themePal.primary)
+                                )
+                                Column {
+                                    Text(
+                                        text = theme.displayName,
+                                        color = if (isSelected) themePal.textPrimary else palette.textPrimary,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = theme.description,
+                                        color = if (isSelected) themePal.textSecondary else palette.textSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = themePal.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // App Version & In-App Update Card
         item {
             Text(
@@ -3236,83 +3646,4 @@ fun SettingsTab(
     }
 }
 
-// ── Component: Mini-Player Bar ──────────────────────────────────────────────
 
-@Composable
-fun MiniPlayerBar(
-    track: Track,
-    isPlaying: Boolean,
-    isResolving: Boolean,
-    palette: NuclearPalette,
-    onClick: () -> Unit,
-    onPlayPauseToggle: () -> Unit,
-    onNextClick: (() -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-            .background(palette.surfaceVariant)
-            .border(1.dp, palette.border, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        AsyncImage(
-            model = track.thumbnailUrl,
-            contentDescription = track.title,
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(6.dp)),
-            contentScale = ContentScale.Crop
-        )
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                color = palette.textPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (isResolving) "Resolving Opus CDN..." else track.artist,
-                color = if (isResolving) palette.tertiary else palette.secondary,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        if (isResolving) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                color = palette.primary,
-                strokeWidth = 2.dp
-            )
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onPlayPauseToggle) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = palette.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-                if (onNextClick != null) {
-                    IconButton(onClick = onNextClick) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Lagu Selanjutnya",
-                            tint = palette.textPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}

@@ -124,7 +124,19 @@ object PlaybackStateManager {
             val isOffline = ctx != null && OfflineManager.getLocalAudioFile(ctx, nextTrack.id)?.exists() == true
             if (!isOffline) {
                 serviceScope.launch(Dispatchers.IO) {
-                    StreamResolver.resolveAudioStreamDetailed(nextTrack.id).onSuccess { res ->
+                    val resolvedId = if (nextTrack.id.startsWith("dz_") && ctx != null) {
+                        val dzId = nextTrack.id.removePrefix("dz_").toLongOrNull() ?: 0L
+                        StreamResolver.resolveDeezerTrackToYouTubeId(
+                            context = ctx,
+                            deezerId = dzId,
+                            title = nextTrack.title,
+                            artist = nextTrack.artist,
+                            targetDurationSeconds = nextTrack.durationSeconds
+                        ).getOrElse { nextTrack.id }
+                    } else {
+                        nextTrack.id
+                    }
+                    StreamResolver.resolveAudioStreamDetailed(resolvedId).onSuccess { res ->
                         preResolvedUrls[nextTrack.id] = res
                         Log.d(TAG, "Gapless pre-resolved next track: ${nextTrack.title}")
                     }
@@ -270,7 +282,20 @@ object PlaybackStateManager {
         // Online streaming playback (Handled strictly in background)
         _isResolvingStream.value = true
         resolveJob = serviceScope.launch(Dispatchers.IO) {
-            val streamRes = StreamResolver.resolveAudioStreamDetailed(track.id)
+            val resolvedTrackId = if (track.id.startsWith("dz_")) {
+                val dzId = track.id.removePrefix("dz_").toLongOrNull() ?: 0L
+                StreamResolver.resolveDeezerTrackToYouTubeId(
+                    context = context,
+                    deezerId = dzId,
+                    title = track.title,
+                    artist = track.artist,
+                    targetDurationSeconds = track.durationSeconds
+                ).getOrElse { track.id }
+            } else {
+                track.id
+            }
+
+            val streamRes = StreamResolver.resolveAudioStreamDetailed(resolvedTrackId)
             streamRes.onSuccess { detailed ->
                 val updatedTrack = track.copy(
                     streamUrl = detailed.streamUrl,

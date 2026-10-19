@@ -24,9 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+
 import coil.compose.AsyncImage
+import com.puki.music.core.DeezerRepository
 import com.puki.music.core.OfflineManager
 import com.puki.music.core.StreamResolver
 import com.puki.music.data.LocalMusicStore
@@ -73,28 +73,45 @@ fun ArtistAlbumModal(
         selectedAlbum = album
         isLoadingAlbumTracks = true
         scope.launch {
-            val res = StreamResolver.getAlbumTracks(album.url)
-            res.onSuccess { tracks ->
-                albumTracks = tracks
-                // Asynchronously fetch views for album tracks in background so UI stays smooth & views appear
-                launch(Dispatchers.IO) {
-                    tracks.forEachIndexed { index, track ->
-                        if (track.viewCount <= 0L) {
-                            val detail = StreamResolver.resolveAudioStreamDetailed(track.id)
-                            detail.onSuccess { d ->
-                                if (d.viewCount > 0L) {
-                                    withContext(Dispatchers.Main) {
-                                        albumTracks = albumTracks.mapIndexed { i, t ->
-                                            if (i == index) t.copy(viewCount = d.viewCount, likeCount = d.likeCount) else t
+            if (album.url.startsWith("dz_")) {
+                val dzAlbumId = album.url.removePrefix("dz_").toLongOrNull() ?: 0L
+                val dzRes = DeezerRepository.getAlbumTracks(context, dzAlbumId)
+                dzRes.onSuccess { dzTracks ->
+                    albumTracks = dzTracks.map { dz ->
+                        Track(
+                            id = "dz_${dz.id}",
+                            title = dz.title,
+                            artist = dz.artistName,
+                            durationSeconds = dz.durationSeconds,
+                            thumbnailUrl = dz.coverUrl
+                        )
+                    }
+                }.onFailure {
+                    Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val res = StreamResolver.getAlbumTracks(album.url)
+                res.onSuccess { tracks ->
+                    albumTracks = tracks
+                    launch(Dispatchers.IO) {
+                        tracks.forEachIndexed { index, track ->
+                            if (track.viewCount <= 0L) {
+                                val detail = StreamResolver.resolveAudioStreamDetailed(track.id)
+                                detail.onSuccess { d ->
+                                    if (d.viewCount > 0L) {
+                                        withContext(Dispatchers.Main) {
+                                            albumTracks = albumTracks.mapIndexed { i, t ->
+                                                if (i == index) t.copy(viewCount = d.viewCount, likeCount = d.likeCount) else t
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }.onFailure {
+                    Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
                 }
-            }.onFailure {
-                Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
             }
             isLoadingAlbumTracks = false
         }
@@ -107,12 +124,40 @@ fun ArtistAlbumModal(
         }
     }
 
-    // Load albums on launch
+    // Load albums on launch (Hybrid Deezer + YouTube Fallback)
     LaunchedEffect(artistName) {
         isLoadingAlbums = true
-        val res = StreamResolver.searchAlbums(artistName)
-        res.onSuccess {
-            albums = it
+        // Try searching Deezer clean discography first
+        val dzSearch = DeezerRepository.searchCleanTracks(context, artistName, limit = 5)
+        var dzFound = false
+        dzSearch.onSuccess { dzTracks ->
+            val firstArtist = dzTracks.firstOrNull { it.artistName.contains(artistName, ignoreCase = true) } ?: dzTracks.firstOrNull()
+            if (firstArtist != null) {
+                val dzAlbumsRes = DeezerRepository.getArtistAlbums(context, firstArtist.artistId)
+                dzAlbumsRes.onSuccess { dzList ->
+                    if (dzList.isNotEmpty()) {
+                        albums = dzList.map { dz ->
+                            Album(
+                                id = "dz_${dz.id}",
+                                title = dz.title,
+                                artist = dz.artistName,
+                                trackCount = dz.trackCount.toLong(),
+                                thumbnailUrl = dz.coverUrl,
+                                url = "dz_${dz.id}"
+                            )
+                        }
+                        dzFound = true
+                    }
+                }
+            }
+        }
+
+        // Fallback to YouTube scraper if Deezer albums empty
+        if (!dzFound) {
+            val res = StreamResolver.searchAlbums(artistName)
+            res.onSuccess {
+                albums = it
+            }
         }
         isLoadingAlbums = false
     }
@@ -129,19 +174,15 @@ fun ArtistAlbumModal(
         }
     }
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = palette.background
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = palette.background
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -193,136 +234,146 @@ fun ArtistAlbumModal(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (selectedAlbum != null) {
-                    // ── Album Detail View ───────────────────────────────────
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surfaceVariant)
-                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        AsyncImage(
-                            model = selectedAlbum!!.thumbnailUrl,
-                            contentDescription = selectedAlbum!!.title,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.Black),
-                            contentScale = ContentScale.Crop
-                        )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    if (selectedAlbum != null) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // ── Album Detail View ───────────────────────────────────
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(palette.surfaceVariant)
+                                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                AsyncImage(
+                                    model = selectedAlbum!!.thumbnailUrl,
+                                    contentDescription = selectedAlbum!!.title,
+                                    modifier = Modifier
+                                        .size(72.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black),
+                                    contentScale = ContentScale.Crop
+                                )
 
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = selectedAlbum!!.title,
-                                color = palette.textPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${albumTracks.size.takeIf { it > 0 } ?: selectedAlbum!!.trackCount} Lagu • $artistName",
-                                color = palette.secondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Action buttons for Album
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (albumTracks.isNotEmpty()) onMixPlayClick(albumTracks)
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("PUTAR ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-
-                        val activeBatch = OfflineManager.activeBatch.value
-                        val isBatchDownloadingThis = activeBatch != null && activeBatch.batchId == selectedAlbum!!.id
-
-                        Button(
-                            onClick = {
-                                if (albumTracks.isNotEmpty() && !isBatchDownloadingThis) {
-                                    onDownloadAlbum(albumTracks, selectedAlbum!!.title)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = selectedAlbum!!.title,
+                                        color = palette.textPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "${albumTracks.size.takeIf { it > 0 } ?: selectedAlbum!!.trackCount} Lagu • $artistName",
+                                        color = palette.secondary,
+                                        fontSize = 11.sp
+                                    )
                                 }
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isBatchDownloadingThis) palette.surfaceVariant else palette.secondary),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(vertical = 8.dp)
-                        ) {
-                            if (isBatchDownloadingThis && activeBatch != null) {
-                                Text("${activeBatch.overallPercent}% UNDUH", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            } else {
-                                Icon(Icons.Default.Download, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("UNDUH 1 ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
-                        }
-                    }
 
-                    val currentBatch = OfflineManager.activeBatch.value
-                    if (currentBatch != null && currentBatch.batchId == selectedAlbum!!.id) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        BatchDownloadBanner(batch = currentBatch, palette = palette)
-                    }
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                            // Action buttons for Album
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        if (albumTracks.isNotEmpty()) onMixPlayClick(albumTracks)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("PUTAR ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
 
-                    if (isLoadingAlbumTracks) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = palette.primary)
-                        }
-                    } else if (albumTracks.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Daftar lagu album tidak ditemukan", color = palette.textSecondary, fontSize = 12.sp)
+                                val activeBatch = OfflineManager.activeBatch.value
+                                val isBatchDownloadingThis = activeBatch != null && activeBatch.batchId == selectedAlbum!!.id
+
+                                Button(
+                                    onClick = {
+                                        if (albumTracks.isNotEmpty() && !isBatchDownloadingThis) {
+                                            onDownloadAlbum(albumTracks, selectedAlbum!!.title)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (isBatchDownloadingThis) palette.surfaceVariant else palette.secondary),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    if (isBatchDownloadingThis && activeBatch != null) {
+                                        Text("${activeBatch.overallPercent}% UNDUH", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    } else {
+                                        Icon(Icons.Default.Download, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("UNDUH 1 ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+
+                            val currentBatch = OfflineManager.activeBatch.value
+                            if (currentBatch != null && currentBatch.batchId == selectedAlbum!!.id) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                BatchDownloadBanner(batch = currentBatch, palette = palette)
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            if (isLoadingAlbumTracks) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = palette.primary)
+                                }
+                            } else if (albumTracks.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("Daftar lagu album tidak ditemukan", color = palette.textSecondary, fontSize = 12.sp)
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(albumTracks) { track ->
+                                        val normId = LocalMusicStore.normalizeId(track.id)
+                                        val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
+                                        val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
+                                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
+                                        val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
+
+                                        TrackItemCard(
+                                            track = track,
+                                            isSelected = activeTrack?.id == track.id,
+                                            isFavorite = isFav,
+                                            isOffline = isOffline,
+                                            downloadProgress = trackProgress,
+                                            isDownloading = isActivelyDownloading,
+                                            palette = palette,
+                                            onClick = { onTrackClick(track, albumTracks) },
+                                            onFavoriteToggle = {
+                                                if (onFavoriteToggle != null) onFavoriteToggle(track) else store.toggleFavorite(track)
+                                            },
+                                            onAddToPlaylist = { onAddToPlaylist(track) },
+                                            onDownloadClick = { onDownloadTrack(track) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(albumTracks) { track ->
-                                val normId = LocalMusicStore.normalizeId(track.id)
-                                val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
-                                val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                                val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
-                                val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
-
-                                TrackItemCard(
-                                    track = track,
-                                    isSelected = activeTrack?.id == track.id,
-                                    isFavorite = isFav,
-                                    isOffline = isOffline,
-                                    downloadProgress = trackProgress,
-                                    isDownloading = isActivelyDownloading,
-                                    palette = palette,
-                                    onClick = { onTrackClick(track, albumTracks) },
-                                    onFavoriteToggle = {
-                                        if (onFavoriteToggle != null) onFavoriteToggle(track) else store.toggleFavorite(track)
-                                    },
-                                    onAddToPlaylist = { onAddToPlaylist(track) },
-                                    onDownloadClick = { onDownloadTrack(track) }
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // ── Tab Switcher: [ ALBUM & EP ] vs [ TOP TRACKS ] ──────
+                        Column(modifier = Modifier.fillMaxSize()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -476,4 +527,5 @@ fun ArtistAlbumModal(
             }
         }
     }
+}
 }
