@@ -109,7 +109,20 @@ object OfflineManager {
         onProgress: (Int) -> Unit = {}
     ): Result<Track> = withContext(Dispatchers.IO) {
         runCatching {
-            val detailedRes = StreamResolver.resolveAudioStreamDetailed(track.id).getOrThrow()
+            val resolvedId = if (track.id.startsWith("dz_")) {
+                val dzId = track.id.removePrefix("dz_").toLongOrNull() ?: 0L
+                StreamResolver.resolveDeezerTrackToYouTubeId(
+                    context = context,
+                    deezerId = dzId,
+                    title = track.title,
+                    artist = track.artist,
+                    targetDurationSeconds = track.durationSeconds
+                ).getOrElse { track.id }
+            } else {
+                track.id
+            }
+
+            val detailedRes = StreamResolver.resolveAudioStreamDetailed(resolvedId).getOrThrow()
             val streamUrl = detailedRes.streamUrl
             val views = if (track.viewCount > 0) track.viewCount else detailedRes.viewCount
             val likes = if (track.likeCount > 0) track.likeCount else detailedRes.likeCount

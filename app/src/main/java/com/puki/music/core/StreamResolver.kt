@@ -1,5 +1,6 @@
 package com.puki.music.core
 
+import android.content.Context
 import com.puki.music.model.Album
 import com.puki.music.model.Track
 import android.util.Log
@@ -311,7 +312,62 @@ object StreamResolver {
         Result.failure(lastError ?: IllegalStateException("Gagal memuat stream setelah $maxRetries percobaan"))
     }
 
-    suspend fun resolveAudioStream(trackUrl: String): Result<String> {
-        return resolveAudioStreamDetailed(trackUrl).map { it.streamUrl }
+    // ── Deezer-to-YouTube Stream Matcher (OmniSource Resolver) ─────────────
+
+    suspend fun resolveDeezerTrackToYouTubeId(
+        context: Context,
+        deezerId: Long,
+        title: String,
+        artist: String,
+        targetDurationSeconds: Long
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val prefs = context.getSharedPreferences("deezer_yt_mappings", Context.MODE_PRIVATE)
+            val cachedYtId = prefs.getString(deezerId.toString(), null)
+            if (!cachedYtId.isNullOrBlank()) {
+                return@runCatching cachedYtId
+            }
+
+            val service = ServiceList.YouTube
+            val queries = listOf(
+                "$artist - $title Topic",
+                "$artist $title Official Audio",
+                "$artist $title Audio",
+                "$artist $title"
+            )
+
+            var bestMatchId: String? = null
+            var bestDiff = Long.MAX_VALUE
+
+            for (q in queries) {
+                try {
+                    val extractor = service.getSearchExtractor(q)
+                    extractor.fetchPage()
+                    val items = extractor.initialPage.items.filterIsInstance<StreamInfoItem>()
+                    for (item in items) {
+                        val duration = item.duration
+                        val diff = kotlin.math.abs(duration - targetDurationSeconds)
+                        // Toleransi ketat: jika uploader Topic dan selisih <= 3 detik
+                        if (item.uploaderName.endsWith("- Topic", ignoreCase = true) && diff <= 3) {
+                            bestMatchId = item.url
+                            bestDiff = diff
+                            break
+                        }
+                        if (diff < bestDiff && diff <= 8) {
+                            bestDiff = diff
+                            bestMatchId = item.url
+                        }
+                    }
+                    if (bestMatchId != null && bestDiff <= 3) break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Search query failed: $q", e)
+                }
+            }
+
+            val finalId = bestMatchId ?: throw Exception("No suitable YouTube stream found for $artist - $title")
+            val cleanId = if (finalId.contains("v=")) finalId.substringAfter("v=").substringBefore("&") else finalId
+            prefs.edit().putString(deezerId.toString(), cleanId).apply()
+            cleanId
+        }
     }
 }

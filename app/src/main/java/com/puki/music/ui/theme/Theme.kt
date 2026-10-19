@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 enum class NuclearThemeId(val idKey: String, val displayName: String, val description: String) {
+    MIDNIGHT_GLOW("nuclear:midnight-glow", "Puki Midnight (YouTube Glow)", "Deep navy obsidian with warm coral glow"),
     DEFAULT("nuclear:default", "Nuclear Default", "Plum dark with Aurora violet"),
     AURORA("nuclear:aurora", "Aurora", "Deep indigo with neon magenta"),
     EMBER("nuclear:ember", "Ember", "Warm charcoal with fiery amber"),
@@ -15,7 +16,7 @@ enum class NuclearThemeId(val idKey: String, val displayName: String, val descri
 
     companion object {
         fun fromKey(key: String): NuclearThemeId {
-            return entries.firstOrNull { it.idKey == key } ?: DEFAULT
+            return entries.firstOrNull { it.idKey == key } ?: MIDNIGHT_GLOW
         }
     }
 }
@@ -32,6 +33,18 @@ data class NuclearPalette(
     val border: Color,
     val success: Color = Color(0xFF4ED37A),
     val error: Color = Color(0xFFFF5370)
+)
+
+val PaletteMidnightGlow = NuclearPalette(
+    background = Color(0xFF0C0C14),
+    surface = Color(0xFF161624),
+    surfaceVariant = Color(0xFF1F1F33),
+    primary = Color(0xFFFCA766), // Coral Sunset Logo
+    secondary = Color(0xFFF07575), // Salmon Pink Logo
+    tertiary = Color(0xFFE8537D), // Magenta Logo
+    textPrimary = Color(0xFFFDFBF7),
+    textSecondary = Color(0xFFA2A0B8),
+    border = Color(0xFF2B2B44)
 )
 
 val PaletteDefault = NuclearPalette(
@@ -96,6 +109,7 @@ val PaletteArcticMoss = NuclearPalette(
 
 fun getPaletteFor(themeId: NuclearThemeId): NuclearPalette {
     return when (themeId) {
+        NuclearThemeId.MIDNIGHT_GLOW -> PaletteMidnightGlow
         NuclearThemeId.DEFAULT -> PaletteDefault
         NuclearThemeId.AURORA -> PaletteAurora
         NuclearThemeId.EMBER -> PaletteEmber

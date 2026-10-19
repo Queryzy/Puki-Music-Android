@@ -29,6 +29,20 @@ android {
         }
     }
 
+    flavorDimensions += "version"
+    productFlavors {
+        create("prod") {
+            dimension = "version"
+            applicationId = "com.puki.music"
+            resValue("string", "app_name", "Puki Music")
+        }
+        create("dev") {
+            dimension = "version"
+            applicationId = "com.puki.music.dev"
+            resValue("string", "app_name", "Puki Music DEV")
+        }
+    }
+
     signingConfigs {
         create("release") {
             if (keystorePropertiesFile.exists()) {

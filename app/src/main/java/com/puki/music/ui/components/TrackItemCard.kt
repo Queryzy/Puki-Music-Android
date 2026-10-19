@@ -134,7 +134,7 @@ fun TrackItemCard(
             }
 
             // ── Line 3: Plays Count & Badges (Populer / Size / PlayCount) ──
-            val hasMetrics = track.formattedViews != null || track.isPopular || playCount > 0 || (fileSizeText != null && isOffline)
+            val hasMetrics = track.formattedViews != null || track.isPopular || track.id.startsWith("dz_") || playCount > 0 || (fileSizeText != null && isOffline)
             if (hasMetrics) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
@@ -151,7 +151,17 @@ fun TrackItemCard(
                             softWrap = false
                         )
                     }
-                    if (track.isPopular) {
+                    if (track.id.startsWith("dz_")) {
+                        Text(
+                            text = "💿 OFFICIAL • HD",
+                            color = palette.tertiary,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    } else if (track.isPopular) {
                         Text(
                             text = "🔥 POPULER",
                             color = palette.secondary,
