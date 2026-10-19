@@ -170,6 +170,21 @@ fun NuclearMainScreen(
     var viewingArtist by remember { mutableStateOf<String?>(null) }
     var viewingAlbum by remember { mutableStateOf<Album?>(null) }
 
+    // Persistent Search Tab State (Retained across tab switching)
+    var persistentSearchQuery by remember { mutableStateOf("") }
+    var persistentSearchFilter by remember { mutableIntStateOf(0) }
+    var persistentOfficialTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var persistentYoutubeTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var persistentAlbumResults by remember { mutableStateOf<List<Album>>(emptyList()) }
+    var persistentTopArtistResult by remember { mutableStateOf<com.puki.music.model.DeezerArtist?>(null) }
+    var isAppInitialized by remember { mutableStateOf(false) }
+
+    // Initial Splash Screen loading delay
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1200)
+        isAppInitialized = true
+    }
+
     // Reactive data lists
     var favoritesList by remember { mutableStateOf(store.getFavorites()) }
     var offlineTracks by remember { mutableStateOf(store.getOfflineTracks()) }
@@ -450,6 +465,60 @@ fun NuclearMainScreen(
         downloadPlaylist(undownloaded, "Lagu Disukai")
     }
 
+    if (!isAppInitialized) {
+        // ── Splash Screen (YouTube Music Style) ──────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(palette.background),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_app_logo),
+                    contentDescription = "Puki Music",
+                    modifier = Modifier
+                        .size(92.dp)
+                        .clip(CircleShape)
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Puki ",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "Music",
+                        style = androidx.compose.ui.text.TextStyle(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFFFCA766),
+                                    Color(0xFFF07575),
+                                    Color(0xFFE8537D)
+                                )
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = palette.primary,
+                    strokeWidth = 2.5.dp
+                )
+            }
+        }
+        return
+    }
+
     Scaffold(
         containerColor = palette.background,
         topBar = {
@@ -558,8 +627,12 @@ fun NuclearMainScreen(
                     tonalElevation = 0.dp
                 ) {
                     NavigationBarItem(
-                        selected = currentTab == 0,
-                        onClick = { currentTab = 0 },
+                        selected = currentTab == 0 && viewingArtist == null && viewingAlbum == null,
+                        onClick = {
+                            viewingArtist = null
+                            viewingAlbum = null
+                            currentTab = 0
+                        },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Dashboard") },
                         label = { Text("Dashboard", fontSize = 10.sp) },
                         colors = NavigationBarItemDefaults.colors(
@@ -571,8 +644,10 @@ fun NuclearMainScreen(
                         )
                     )
                     NavigationBarItem(
-                        selected = currentTab == 1,
-                        onClick = { currentTab = 1 },
+                        selected = (currentTab == 1 || viewingArtist != null || viewingAlbum != null),
+                        onClick = {
+                            currentTab = 1
+                        },
                         icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                         label = { Text("Search", fontSize = 10.sp) },
                         colors = NavigationBarItemDefaults.colors(
@@ -584,8 +659,10 @@ fun NuclearMainScreen(
                         )
                     )
                     NavigationBarItem(
-                        selected = currentTab == 2,
+                        selected = currentTab == 2 && viewingArtist == null && viewingAlbum == null,
                         onClick = {
+                            viewingArtist = null
+                            viewingAlbum = null
                             favoritesList = store.getFavorites()
                             offlineTracks = store.getOfflineTracks()
                             currentTab = 2
@@ -601,8 +678,10 @@ fun NuclearMainScreen(
                         )
                     )
                     NavigationBarItem(
-                        selected = currentTab == 3,
+                        selected = currentTab == 3 && viewingArtist == null && viewingAlbum == null,
                         onClick = {
+                            viewingArtist = null
+                            viewingAlbum = null
                             playlistsList = store.getPlaylists()
                             currentTab = 3
                         },
@@ -617,8 +696,12 @@ fun NuclearMainScreen(
                         )
                     )
                     NavigationBarItem(
-                        selected = currentTab == 4,
-                        onClick = { currentTab = 4 },
+                        selected = currentTab == 4 && viewingArtist == null && viewingAlbum == null,
+                        onClick = {
+                            viewingArtist = null
+                            viewingAlbum = null
+                            currentTab = 4
+                        },
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                         label = { Text("Settings", fontSize = 10.sp) },
                         colors = NavigationBarItemDefaults.colors(
@@ -677,21 +760,33 @@ fun NuclearMainScreen(
                     onArtistClick = { viewingArtist = it }
                 )
                 1 -> SearchTab(
-     palette = palette,
-     activeTrack = activeTrack,
-     store = store,
-     downloadingIds = downloadingTrackIds,
-     favoriteIds = favoriteTrackIds,
-     offlineTrackIds = offlineTrackIds,
-     onTrackSelected = { track, list -> playTrack(track, list) },
-     onMixPlayClick = { list -> startMixPlay(list) },
-     onDownloadClick = { toggleOfflineDownload(it) },
-     onAddToPlaylist = { playlistToAddTo = it },
-     onFavoritesChanged = { favoritesList = store.getFavorites() },
-     onFavoriteToggle = { handleFavoriteToggle(it) },
-     onArtistClick = { viewingArtist = it },
-     onAlbumClick = { viewingAlbum = it }
- )
+                    palette = palette,
+                    activeTrack = activeTrack,
+                    store = store,
+                    downloadingIds = downloadingTrackIds,
+                    favoriteIds = favoriteTrackIds,
+                    offlineTrackIds = offlineTrackIds,
+                    query = persistentSearchQuery,
+                    onQueryChange = { persistentSearchQuery = it },
+                    searchFilter = persistentSearchFilter,
+                    onSearchFilterChange = { persistentSearchFilter = it },
+                    officialTracks = persistentOfficialTracks,
+                    onOfficialTracksChange = { persistentOfficialTracks = it },
+                    youtubeTracks = persistentYoutubeTracks,
+                    onYoutubeTracksChange = { persistentYoutubeTracks = it },
+                    albumResults = persistentAlbumResults,
+                    onAlbumResultsChange = { persistentAlbumResults = it },
+                    topArtistResult = persistentTopArtistResult,
+                    onTopArtistResultChange = { persistentTopArtistResult = it },
+                    onTrackSelected = { track, list -> playTrack(track, list) },
+                    onMixPlayClick = { list -> startMixPlay(list) },
+                    onDownloadClick = { toggleOfflineDownload(it) },
+                    onAddToPlaylist = { playlistToAddTo = it },
+                    onFavoritesChanged = { favoritesList = store.getFavorites() },
+                    onFavoriteToggle = { handleFavoriteToggle(it) },
+                    onArtistClick = { viewingArtist = it },
+                    onAlbumClick = { viewingAlbum = it }
+                )
                 2 -> LibraryTab(
                     favorites = favoritesList,
                     offlineTracks = offlineTracks,
@@ -1552,383 +1647,7 @@ fun DashboardTab(
     }
 }
 
-// ── Tab 1: Search ───────────────────────────────────────────────────────────
-
-@Composable
-fun SearchTab(
-    palette: NuclearPalette,
-    activeTrack: Track?,
-    store: LocalMusicStore,
-    downloadingIds: List<String>,
-    favoriteIds: Set<String> = emptySet(),
-    offlineTrackIds: Set<String> = emptySet(),
-    onTrackSelected: (Track, List<Track>) -> Unit,
-    onMixPlayClick: (List<Track>) -> Unit,
-    onDownloadClick: (Track) -> Unit,
-    onAddToPlaylist: (Track) -> Unit,
-    onFavoritesChanged: () -> Unit,
-    onFavoriteToggle: ((Track) -> Unit)? = null,
-    onArtistClick: (String) -> Unit,
-    onAlbumClick: (Album) -> Unit = {}
-) {
-    var query by remember { mutableStateOf("") }
-    // 0 = Semua (Unified Top Results), 1 = Lagu Resmi (Deezer), 2 = YouTube / Remix, 3 = Album
-    var searchFilter by remember { mutableIntStateOf(0) }
-    var officialTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var youtubeTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var albumResults by remember { mutableStateOf<List<Album>>(emptyList()) }
-    var topArtistResult by remember { mutableStateOf<com.puki.music.model.DeezerArtist?>(null) }
-    var isSearching by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    fun performSearch() {
-        if (query.isBlank()) return
-        isSearching = true
-        store.recordSearch(query.trim())
-        scope.launch {
-            // Search Deezer Tracks + YouTube Streams + Deezer Albums + Deezer Artists in parallel
-            val dzTrackJob = async(Dispatchers.IO) { DeezerRepository.searchCleanTracks(context, query.trim(), limit = 30) }
-            val ytTrackJob = async(Dispatchers.IO) { StreamResolver.searchTracks(query.trim()) }
-            val dzAlbumJob = async(Dispatchers.IO) { DeezerRepository.searchCleanAlbums(context, query.trim(), limit = 20) }
-            val dzArtistJob = async(Dispatchers.IO) { DeezerRepository.searchCleanArtists(context, query.trim(), limit = 5) }
-
-            val dzTrackRes = dzTrackJob.await()
-            val ytTrackRes = ytTrackJob.await()
-            val dzAlbumRes = dzAlbumJob.await()
-            val dzArtistRes = dzArtistJob.await()
-
-            // 1. Official Tracks (Deezer)
-            dzTrackRes.onSuccess { list ->
-                officialTracks = list.map { dz ->
-                    Track(
-                        id = "dz_${dz.id}",
-                        title = dz.title,
-                        artist = dz.artistName,
-                        durationSeconds = dz.durationSeconds,
-                        thumbnailUrl = dz.coverUrl
-                    )
-                }
-            }
-
-            // 2. YouTube Streams
-            ytTrackRes.onSuccess { list ->
-                youtubeTracks = list
-            }
-
-            // 3. Official Albums
-            dzAlbumRes.onSuccess { list ->
-                if (list.isNotEmpty()) {
-                    albumResults = list.map { dz ->
-                        Album(
-                            id = "dz_${dz.id}",
-                            title = dz.title,
-                            artist = dz.artistName,
-                            trackCount = dz.trackCount.toLong(),
-                            thumbnailUrl = dz.coverUrl,
-                            url = "dz_${dz.id}"
-                        )
-                    }
-                } else {
-                    // Fallback to youtube albums if deezer empty
-                    val ytAlbum = StreamResolver.searchAlbums(query.trim())
-                    ytAlbum.onSuccess { albumResults = it }
-                }
-            }
-
-            // 4. Top Artist Match
-            dzArtistRes.onSuccess { list ->
-                topArtistResult = list.firstOrNull()
-            }
-
-            isSearching = false
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Telusuri musik...", color = palette.textSecondary) },
-            singleLine = true,
-            trailingIcon = {
-                IconButton(onClick = { performSearch() }) {
-                    Icon(Icons.Default.Search, contentDescription = "Cari", tint = palette.primary)
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = palette.primary,
-                unfocusedBorderColor = palette.border,
-                focusedTextColor = palette.textPrimary,
-                unfocusedTextColor = palette.textPrimary,
-                cursorColor = palette.primary
-            ),
-            shape = RoundedCornerShape(8.dp)
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Horizontal Category Filter (Nuclear OmniSource Pattern: Semua, Lagu Resmi, YouTube, Album)
-        val filterLabels = listOf("SEMUA", "LAGU RESMI (HD)", "YOUTUBE / REMIX", "ALBUM")
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(filterLabels.size) { idx ->
-                val isSel = searchFilter == idx
-                FilterChip(
-                    selected = isSel,
-                    onClick = {
-                        searchFilter = idx
-                        if (query.isNotBlank() && officialTracks.isEmpty() && youtubeTracks.isEmpty()) performSearch()
-                    },
-                    label = {
-                        Text(
-                            text = filterLabels[idx],
-                            fontSize = 11.sp,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = palette.primary,
-                        selectedLabelColor = palette.background,
-                        containerColor = palette.surfaceVariant,
-                        labelColor = palette.textSecondary
-                    ),
-                    border = BorderStroke(1.dp, if (isSel) palette.primary else palette.border)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { performSearch() },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.Default.Search, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("CARI KATALOG LENGKAP", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
-
-            val currentActiveList = when (searchFilter) {
-                1 -> officialTracks
-                2 -> youtubeTracks
-                else -> (officialTracks + youtubeTracks)
-            }
-
-            if (currentActiveList.isNotEmpty()) {
-                Button(
-                    onClick = { onMixPlayClick(currentActiveList) },
-                    colors = ButtonDefaults.buttonColors(containerColor = palette.secondary),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("MIX", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        if (isSearching) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.primary)
-            }
-        } else if (searchFilter == 3) {
-            // ── Tab 3: Khusus Album & EP ──
-            if (albumResults.isEmpty() && query.isNotBlank()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Belum ada album ditemukan", color = palette.textSecondary, fontSize = 12.sp)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(albumResults) { album ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onAlbumClick(album) },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = palette.surface),
-                            border = BorderStroke(1.dp, palette.border)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                AsyncImage(
-                                    model = album.thumbnailUrl,
-                                    contentDescription = album.title,
-                                    modifier = Modifier
-                                        .size(54.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color.Black),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = album.title,
-                                        color = palette.textPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "${album.artist} • ${album.trackCount} Lagu",
-                                        color = palette.textSecondary,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Icon(
-                                    Icons.Default.ChevronRight,
-                                    contentDescription = null,
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            // ── Tab 0 (Semua), 1 (Resmi), 2 (YouTube) ──
-            val displayedTracks = when (searchFilter) {
-                1 -> officialTracks
-                2 -> youtubeTracks
-                else -> {
-                    // Unified: Official tracks first, then YouTube streams
-                    val list = mutableListOf<Track>()
-                    list.addAll(officialTracks)
-                    val seen = officialTracks.map { "${it.title.lowercase()}_${it.artist.lowercase()}" }.toSet()
-                    for (yt in youtubeTracks) {
-                        val key = "${yt.title.lowercase()}_${yt.artist.lowercase()}"
-                        if (!seen.contains(key)) list.add(yt)
-                    }
-                    list
-                }
-            }
-
-            if (displayedTracks.isEmpty() && query.isNotBlank()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Lagu tidak ditemukan. Coba ganti tab atau kata kunci.", color = palette.textSecondary, fontSize = 12.sp)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // If unified view (Semua) and top artist found, show artist banner
-                    if (searchFilter == 0 && topArtistResult != null) {
-                        item {
-                            val art = topArtistResult!!
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onArtistClick(art.name) },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
-                                border = BorderStroke(1.5.dp, palette.primary.copy(alpha = 0.5f))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                                ) {
-                                    AsyncImage(
-                                        model = art.pictureUrl,
-                                        contentDescription = art.name,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(54.dp)
-                                            .clip(CircleShape)
-                                            .border(1.dp, palette.primary, CircleShape)
-                                            .background(Color.Black)
-                                    )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "ARTIS TERBAIK",
-                                            color = palette.primary,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 1.sp
-                                        )
-                                        Text(
-                                            text = art.name,
-                                            color = palette.textPrimary,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        )
-                                        Text(
-                                            text = "${art.albumCount} Album • Buka Diskografi",
-                                            color = palette.textSecondary,
-                                            fontSize = 11.sp
-                                        )
-                                    }
-                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = palette.primary)
-                                }
-                            }
-                        }
-                    }
-
-                    items(displayedTracks) { track ->
-                        val normId = LocalMusicStore.normalizeId(track.id)
-                        val trackProgress = OfflineManager.activeDownloads[track.id] ?: OfflineManager.activeDownloads[normId]
-                        val isActivelyDownloading = trackProgress != null || downloadingIds.contains(track.id) || downloadingIds.contains(normId)
-                        val isOffline = !isActivelyDownloading && (offlineTrackIds.contains(track.id) || offlineTrackIds.contains(normId))
-                        val isFav = favoriteIds.contains(track.id) || favoriteIds.contains(normId)
-
-                        TrackItemCard(
-                            track = track,
-                            isSelected = activeTrack?.id == track.id,
-                            isFavorite = isFav,
-                            isOffline = isOffline,
-                            downloadProgress = trackProgress,
-                            isDownloading = isActivelyDownloading,
-                            playCount = store.getPlayCount(track.id),
-                            palette = palette,
-                            onClick = { onTrackSelected(track, displayedTracks) },
-                            onArtistClick = onArtistClick,
-                            onFavoriteToggle = {
-                                if (onFavoriteToggle != null) {
-                                    onFavoriteToggle(track)
-                                } else {
-                                    store.toggleFavorite(track)
-                                    onFavoritesChanged()
-                                }
-                            },
-                            onAddToPlaylist = { onAddToPlaylist(track) },
-                            onDownloadClick = { onDownloadClick(track) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
+// ── Tab 1: Search (Moved to com.puki.music.ui.components.SearchTabContent.kt) ───────────────────────────────────────────────────────────
 
 // ── Tab 2: Library (Favorites + Offline Storage) ─────────────────────────────
 

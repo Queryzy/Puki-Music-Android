@@ -141,6 +141,21 @@ class LocalMusicStore(private val context: Context) {
         prefs.edit().putString(KEY_SEARCHES, array.toString()).apply()
     }
 
+    fun removeRecentSearch(query: String) {
+        val trimmed = query.trim()
+        val current = getRecentSearches().toMutableList()
+        current.removeAll { it.equals(trimmed, ignoreCase = true) }
+        val array = JSONArray()
+        for (item in current) {
+            array.put(item)
+        }
+        prefs.edit().putString(KEY_SEARCHES, array.toString()).apply()
+    }
+
+    fun clearAllRecentSearches() {
+        prefs.edit().putString(KEY_SEARCHES, "[]").apply()
+    }
+
     fun getRecentSearches(): List<String> {
         val jsonStr = prefs.getString(KEY_SEARCHES, "[]") ?: "[]"
         val array = JSONArray(jsonStr)
