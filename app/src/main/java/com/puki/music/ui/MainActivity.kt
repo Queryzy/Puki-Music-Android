@@ -177,11 +177,19 @@ fun NuclearMainScreen(
     var persistentYoutubeTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var persistentAlbumResults by remember { mutableStateOf<List<Album>>(emptyList()) }
     var persistentTopArtistResult by remember { mutableStateOf<com.puki.music.model.DeezerArtist?>(null) }
+    val splashProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     var isAppInitialized by remember { mutableStateOf(false) }
 
-    // Initial Splash Screen loading delay
+    // Initial Splash Screen loading animation (YouTube Music seekbar style)
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(1200)
+        splashProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = androidx.compose.animation.core.tween(
+                durationMillis = 1100,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing
+            )
+        )
+        kotlinx.coroutines.delay(150)
         isAppInitialized = true
     }
 
@@ -466,7 +474,7 @@ fun NuclearMainScreen(
     }
 
     if (!isAppInitialized) {
-        // ── Splash Screen (YouTube Music Style) ──────────────────────────────────
+        // ── Splash Screen (YouTube Music Style Seek Bar) ─────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -508,12 +516,48 @@ fun NuclearMainScreen(
                         )
                     )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    color = palette.primary,
-                    strokeWidth = 2.5.dp
-                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // YouTube Music Style Slim Seek Bar
+                val barWidth = 200.dp
+                val barHeight = 3.5.dp
+                val progress = splashProgress.value
+
+                Box(
+                    modifier = Modifier
+                        .width(barWidth)
+                        .height(12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    // Track Background
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(barHeight)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color.White.copy(alpha = 0.2f))
+                    )
+
+                    // Active Red Seek Line
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .height(barHeight)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(0xFFFF2A2A))
+                    )
+
+                    // Moving Playhead Thumb Dot
+                    if (progress > 0.02f) {
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (barWidth * progress) - 4.dp)
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFF2A2A))
+                        )
+                    }
+                }
             }
         }
         return
@@ -3303,7 +3347,22 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.57: Chinese Pinyin Engine, Behavior Export/Import & Song Affinity Feed:\n" +
+                        text = "• v1.0.60: YouTube Music Style Splash Loading Seek Bar:\n" +
+                                "  - Animasi progress bar horizontal ramping khas YouTube Music menggantikan spinner bulat di splash screen awal.\n" +
+                                "  - Dilengkapi garis penunjuk waktu dan titik playhead yang berjalan mulus saat sinkronisasi katalog.\n\n" +
+                                "• v1.0.59: YouTube Music Search UX & Search State Hoisting:\n" +
+                                "  - Hoisting State Pencarian: Kata kunci dan hasil pencarian tetap tersimpan saat berpindah tab (Dashboard, Library, Playlist, Settings).\n" +
+                                "  - Riwayat Pencarian Vertikal: Daftar pencarian terbaru dilengkapi tombol hapus satuan, hapus semua, dan tombol insert query.\n" +
+                                "  - Carousel 'Terakhir Diputar': Navigasi cepat lagu yang sering didengarkan di bagian atas menu telusuri.\n" +
+                                "  - Tombol Jelajah Musik Cepat: Akses instan Tangga Lagu dan Rilis Baru.\n" +
+                                "  - Navigasi Sub-View Bersih: Memilih menu bawah saat membuka album/artis langsung menutup overlay dan menuju tab tujuan.\n\n" +
+                                "• v1.0.58: Deezer Omnisource HD, 3D Master Logo & Interactive Seek Bar:\n" +
+                                "  - Integrasi Katalog Deezer HD: Pencarian lagu resmi kualitas studio dengan thumbnail album beresolusi tinggi.\n" +
+                                "  - Interactive Mini Player Progress Bar: Garis seekbar merah interaktif dengan touch scrubbing dan indikator waktu monospace.\n" +
+                                "  - Master Logo 3D Puki Music: Ikon circular badge 3D transparan baru dan gradasi sunset pada header teks.\n" +
+                                "  - Tema Puki Midnight Glow: Palet warna hitam obsidian gelap dengan aksen sunset glow.\n" +
+                                "  - Pemindahan Pengaturan Tema: Opsi ganti tema dipindahkan rapi ke tab Settings.\n\n" +
+                                "• v1.0.57: Chinese Pinyin Engine, Behavior Export/Import & Song Affinity Feed:\n" +
                                 "  - Modul Pinyin Bahasa Cina: Transliterasi karakter Hanzi ke huruf alfabet Pinyin secara otomatis jika toggle Romaji aktif.\n" +
                                 "  - Tombol '🔄 REFRESH LIRIK' diposisikan tepat di sebelah kiri tombol Romaji di bar sub-header lirik agar mudah diakses.\n" +
                                 "  - Fitur Ekspor & Impor Profil Selera di Settings: Pindah device tanpa kehilangan playlist, lagu favorit, tema, dan preferensi.\n" +
