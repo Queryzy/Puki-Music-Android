@@ -2398,6 +2398,8 @@ fun SettingsTab(
     val syncStatus by syncManager.statusFlow.collectAsState()
     var showQrDialog by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var currentPairingUri by remember { mutableStateOf("") }
+    var showEditRelayDialog by remember { mutableStateOf(false) }
+    var customRelayInput by remember { mutableStateOf(syncManager.getRelayUrl()) }
 
     var offlineUsageText by remember { mutableStateOf("Memuat...") }
     var availableStorageText by remember { mutableStateOf("Memuat...") }
@@ -2690,12 +2692,30 @@ fun SettingsTab(
                         lineHeight = 16.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Relay: ${syncManager.getRelayUrl()}",
-                        color = palette.textSecondary.copy(alpha = 0.7f),
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                customRelayInput = syncManager.getRelayUrl()
+                                showEditRelayDialog = true
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Relay: ${syncManager.getRelayUrl()}",
+                            color = palette.textSecondary.copy(alpha = 0.85f),
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "⚙ UBAH",
+                            color = palette.primary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -3645,6 +3665,64 @@ fun SettingsTab(
             confirmButton = {
                 TextButton(onClick = { showQrDialog = null }) {
                     Text("TUTUP", color = palette.primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = palette.surfaceVariant
+        )
+    }
+
+    if (showEditRelayDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditRelayDialog = false },
+            title = {
+                Text("Konfigurasi Relay Server", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            },
+            text = {
+                Column {
+                    Text(
+                        "Masukkan URL relay kustom jika ingin self-hosted (misal: Docker di LAN atau Cloudflare Worker sendiri).",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = customRelayInput,
+                        onValueChange = { customRelayInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = palette.primary,
+                            unfocusedBorderColor = palette.border,
+                            focusedTextColor = palette.textPrimary,
+                            unfocusedTextColor = palette.textPrimary
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { customRelayInput = com.puki.music.sync.SyncManager.DEFAULT_RELAY_URL }
+                    ) {
+                        Text("Reset ke Default Cloud Relay", color = palette.tertiary, fontSize = 11.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = customRelayInput.trim().trimEnd('/')
+                        if (clean.isNotBlank()) {
+                            syncManager.setRelayUrl(clean)
+                            Toast.makeText(context, "URL Relay diperbarui: $clean", Toast.LENGTH_SHORT).show()
+                        }
+                        showEditRelayDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                ) {
+                    Text("SIMPAN", color = palette.background, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditRelayDialog = false }) {
+                    Text("BATAL", color = palette.textSecondary)
                 }
             },
             containerColor = palette.surfaceVariant
