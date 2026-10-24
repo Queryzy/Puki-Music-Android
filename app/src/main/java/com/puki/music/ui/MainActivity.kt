@@ -2377,7 +2377,7 @@ fun SettingsTab(
     offlineTracks: List<Track>,
     favoriteTrackIds: Set<String> = emptySet(),
     offlineTrackIds: Set<String> = emptySet(),
-    currentVersionName: String = "1.0.61",
+    currentVersionName: String = "1.0.62",
     isCheckingUpdate: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
@@ -3549,7 +3549,10 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.61: Cross-Device E2EE Telemetry Sync (Cloud Relay & Zero-Knowledge):\n" +
+                        text = "• v1.0.62: Fix E2EE Sync Authentication & Auto-Heal:\n" +
+                                "  - Perbaikan Otentikasi HMAC: Penyelarasan key K_auth dengan server relay Cloudflare D1 agar bebas dari error 401.\n" +
+                                "  - Detail Diagnostik Error: Pesan error koneksi relay ditampilkan langsung di antarmuka sinkronisasi.\n\n" +
+                                "• v1.0.61: Cross-Device E2EE Telemetry Sync (Cloud Relay & Zero-Knowledge):\n" +
                                 "  - Sinkronisasi Otomatis Multi-Device: Riwayat pencarian, lagu yang diputar, daftar favorit, dan custom playlist kini otomatis sinkron antar-HP (Android & iOS) dan desktop.\n" +
                                 "  - Zero-Knowledge Client-Side AES-256-GCM: Seluruh metadata terenkripsi di perangkat; server relay tidak bisa melihat isi data maupun riwayat pengguna.\n" +
                                 "  - One-Tap QR Pairing: Sambungkan perangkat baru cukup dengan scan kode QR atau salin tautan pairing puki://sync.\n" +
