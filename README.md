@@ -4,6 +4,7 @@
 
 ![Puki Music Android](https://raw.githubusercontent.com/Queryzy/Puki-Music-Android/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png)
 
+### **P.U.K.I.** — *Pure Unlimited Kinetic Interface*
 **Native Android Music Player (Zero-Ads, Background Playback, Synchronized Lyrics & Client-Side E2EE Cross-Device Sync)**
 
 [![Platform](https://img.shields.io/badge/Platform-Android_8.0+_(API_26+)-brightgreen.svg)](https://developer.android.com)
