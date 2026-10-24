@@ -51,7 +51,7 @@ class SyncManager private constructor(private val context: Context) {
         private const val KEY_DEVICE_ID = "sync_device_id"
         private const val KEY_SYNC_ENABLED = "sync_is_enabled"
 
-        const val DEFAULT_RELAY_URL = "https://puki-sync.diylabs.top"
+        const val DEFAULT_RELAY_URL = ""
 
         @Volatile
         private var instance: SyncManager? = null
@@ -89,12 +89,13 @@ class SyncManager private constructor(private val context: Context) {
     // ── Credentials & Pairing ──────────────────────────────────────────────
 
     fun getRelayUrl(): String {
-        return prefs.getString(KEY_RELAY_URL, DEFAULT_RELAY_URL) ?: DEFAULT_RELAY_URL
+        return prefs.getString(KEY_RELAY_URL, "") ?: ""
     }
 
     fun setRelayUrl(url: String) {
         val clean = url.trim().trimEnd('/')
         prefs.edit().putString(KEY_RELAY_URL, clean).apply()
+        updateStatus()
     }
 
     fun getVaultId(): String? {
@@ -106,7 +107,10 @@ class SyncManager private constructor(private val context: Context) {
     }
 
     fun isSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_SYNC_ENABLED, false) && !getVaultId().isNullOrBlank() && !getSyncSecret().isNullOrBlank()
+        return prefs.getBoolean(KEY_SYNC_ENABLED, false) &&
+                !getVaultId().isNullOrBlank() &&
+                !getSyncSecret().isNullOrBlank() &&
+                getRelayUrl().isNotBlank()
     }
 
     fun getDeviceId(): String {
@@ -122,16 +126,24 @@ class SyncManager private constructor(private val context: Context) {
         return devId
     }
 
-    fun initializeNewVault(relayUrl: String = DEFAULT_RELAY_URL): String {
+    fun initializeNewVault(relayUrl: String? = null): String {
+        val targetRelay = (relayUrl ?: getRelayUrl()).trim().trimEnd('/')
+        if (targetRelay.isBlank()) {
+            throw IllegalStateException("URL Relay belum diisi! Masukkan URL relay server terlebih dahulu.")
+        }
         val vaultId = UUID.randomUUID().toString()
         val secret = SyncCrypto.generateRandomSecret()
-        saveCredentials(relayUrl, vaultId, secret)
+        saveCredentials(targetRelay, vaultId, secret)
         return getPairingUri()
     }
 
     fun saveCredentials(relayUrl: String, vaultId: String, syncSecret: String) {
+        val cleanRelay = relayUrl.trim().trimEnd('/')
+        if (cleanRelay.isBlank()) {
+            throw IllegalArgumentException("URL Relay tidak boleh kosong!")
+        }
         prefs.edit()
-            .putString(KEY_RELAY_URL, relayUrl.trim().trimEnd('/'))
+            .putString(KEY_RELAY_URL, cleanRelay)
             .putString(KEY_VAULT_ID, vaultId.trim())
             .putString(KEY_SYNC_SECRET, syncSecret.trim())
             .putBoolean(KEY_SYNC_ENABLED, true)
@@ -167,11 +179,11 @@ class SyncManager private constructor(private val context: Context) {
             val uri = Uri.parse(uriString.trim())
             if (uri.scheme != "puki" || uri.host != "sync") return false
 
-            val url = uri.getQueryParameter("url") ?: DEFAULT_RELAY_URL
+            val url = uri.getQueryParameter("url") ?: uri.getQueryParameter("relay") ?: getRelayUrl()
             val vault = uri.getQueryParameter("vault")
             val key = uri.getQueryParameter("key")
 
-            if (vault.isNullOrBlank() || key.isNullOrBlank()) return false
+            if (url.isBlank() || vault.isNullOrBlank() || key.isNullOrBlank()) return false
 
             saveCredentials(url, vault, key)
             return true

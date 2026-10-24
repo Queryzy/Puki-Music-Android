@@ -2664,17 +2664,19 @@ fun SettingsTab(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        val statusText = when (syncStatus.state) {
-                            com.puki.music.sync.SyncConnectionState.SYNCED -> "● TERHUBUNG"
-                            com.puki.music.sync.SyncConnectionState.CONNECTING -> "○ MENYAMBUNG..."
-                            com.puki.music.sync.SyncConnectionState.ERROR -> "⚠ ERROR"
-                            com.puki.music.sync.SyncConnectionState.DISCONNECTED -> "○ NONAKTIF"
+                        val statusText = when {
+                            customRelayInput.isBlank() -> "○ BELUM DIKONFIGURASI"
+                            syncStatus.state == com.puki.music.sync.SyncConnectionState.SYNCED -> "● TERHUBUNG"
+                            syncStatus.state == com.puki.music.sync.SyncConnectionState.CONNECTING -> "○ MENYAMBUNG..."
+                            syncStatus.state == com.puki.music.sync.SyncConnectionState.ERROR -> "⚠ ERROR"
+                            else -> "○ NONAKTIF"
                         }
-                        val statusColor = when (syncStatus.state) {
-                            com.puki.music.sync.SyncConnectionState.SYNCED -> palette.success
-                            com.puki.music.sync.SyncConnectionState.CONNECTING -> palette.tertiary
-                            com.puki.music.sync.SyncConnectionState.ERROR -> palette.error
-                            com.puki.music.sync.SyncConnectionState.DISCONNECTED -> palette.textSecondary
+                        val statusColor = when {
+                            customRelayInput.isBlank() -> palette.textSecondary
+                            syncStatus.state == com.puki.music.sync.SyncConnectionState.SYNCED -> palette.success
+                            syncStatus.state == com.puki.music.sync.SyncConnectionState.CONNECTING -> palette.tertiary
+                            syncStatus.state == com.puki.music.sync.SyncConnectionState.ERROR -> palette.error
+                            else -> palette.textSecondary
                         }
                         Text(
                             text = statusText,
@@ -2705,7 +2707,7 @@ fun SettingsTab(
                             syncManager.setRelayUrl(it)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("https://relay.domain-kamu.com", fontSize = 11.sp, color = palette.textSecondary.copy(alpha = 0.5f)) },
+                        placeholder = { Text("https://sync.domain.top atau http://192.168.x.x:8080", fontSize = 11.sp, color = palette.textSecondary.copy(alpha = 0.5f)) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = palette.primary,
@@ -2713,19 +2715,7 @@ fun SettingsTab(
                             focusedTextColor = palette.textPrimary,
                             unfocusedTextColor = palette.textPrimary,
                             cursorColor = palette.primary
-                        ),
-                        trailingIcon = {
-                            if (customRelayInput != com.puki.music.sync.SyncManager.DEFAULT_RELAY_URL) {
-                                TextButton(
-                                    onClick = {
-                                        customRelayInput = com.puki.music.sync.SyncManager.DEFAULT_RELAY_URL
-                                        syncManager.setRelayUrl(customRelayInput)
-                                    }
-                                ) {
-                                    Text("DEFAULT", color = palette.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -2736,11 +2726,15 @@ fun SettingsTab(
                     ) {
                         Button(
                             onClick = {
+                                if (customRelayInput.isBlank()) {
+                                    Toast.makeText(context, "Silakan isi URL Relay Server terlebih dahulu!", Toast.LENGTH_LONG).show()
+                                    return@Button
+                                }
                                 try {
                                     val uri = if (syncManager.isSyncEnabled()) {
                                         syncManager.getPairingUri()
                                     } else {
-                                        syncManager.initializeNewVault()
+                                        syncManager.initializeNewVault(customRelayInput)
                                     }
                                     currentPairingUri = uri
                                     showQrDialog = com.puki.music.sync.QrHelper.generateQrBitmap(
