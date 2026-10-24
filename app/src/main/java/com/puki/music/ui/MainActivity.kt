@@ -2377,7 +2377,7 @@ fun SettingsTab(
     offlineTracks: List<Track>,
     favoriteTrackIds: Set<String> = emptySet(),
     offlineTrackIds: Set<String> = emptySet(),
-    currentVersionName: String = "1.0.64",
+    currentVersionName: String = "1.0.65",
     isCheckingUpdate: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
@@ -3553,7 +3553,10 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.64: Fix Coroutine Throttling & Mutex Lock:\n" +
+                        text = "• v1.0.65: Migrasi Sumber Pembaruan ke GitHub Releases:\n" +
+                                "  - Auto-Update Mandiri Publik: Pengecekan versi dan unduhan APK berpindah sepenuhnya ke GitHub API resmi (Queryzy/Puki-Music-Android).\n" +
+                                "  - Keamanan Token: Menghilangkan hardcoded token internal Gitea dari source code aplikasi publik.\n\n" +
+                                "• v1.0.64: Fix Coroutine Throttling & Mutex Lock:\n" +
                                 "  - Mutex Concurrency Lock: Mencegah eksekusi sync ganda atau status stuck 'Menyambungkan'.\n" +
                                 "  - Atomic Batch Outbox: Seeding database lokal ditulis sekaligus ke memori tanpa spam coroutine.\n" +
                                 "  - Caching Registrasi Vault: Menghilangkan perhitungan ulang PoW pada setiap interval sinkronisasi.\n\n" +

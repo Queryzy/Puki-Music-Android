@@ -25,9 +25,7 @@ data class ReleaseInfo(
 
 object AppUpdateManager {
 
-    private const val GITEA_API_URL = "https://gitea.tsolusi.com/api/v1/repos/nanda/puki-music/releases/latest"
-    // Scoped read-only updater token for repo nanda/puki-music
-    private const val UPDATER_TOKEN = "ee8c3835fc4d54b5925ebfb4ba750c2f9a6ed62c"
+    private const val GITHUB_API_URL = "https://api.github.com/repos/Queryzy/Puki-Music-Android/releases/latest"
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -49,14 +47,14 @@ object AppUpdateManager {
     suspend fun checkForUpdate(currentVersionName: String): Result<ReleaseInfo?> = withContext(Dispatchers.IO) {
         runCatching {
             val req = Request.Builder()
-                .url(GITEA_API_URL)
-                .header("Authorization", "token $UPDATER_TOKEN")
-                .header("Accept", "application/json")
+                .url(GITHUB_API_URL)
+                .header("User-Agent", "PukiMusic-App")
+                .header("Accept", "application/vnd.github.v3+json")
                 .build()
 
             val res = httpClient.newCall(req).execute()
             if (!res.isSuccessful) {
-                throw IllegalStateException("Gitea API HTTP ${res.code}")
+                throw IllegalStateException("GitHub API HTTP ${res.code}")
             }
 
             val body = res.body?.string() ?: throw IllegalStateException("Empty response body")
@@ -87,7 +85,7 @@ object AppUpdateManager {
             }
 
             if (downloadUrl.isBlank()) {
-                downloadUrl = "https://gitea.tsolusi.com/nanda/puki-music/releases/download/$tag/Puki-Music.apk"
+                downloadUrl = "https://github.com/Queryzy/Puki-Music-Android/releases/download/$tag/Puki-Music.apk"
             }
 
             ReleaseInfo(
@@ -115,7 +113,7 @@ object AppUpdateManager {
 
             val req = Request.Builder()
                 .url(downloadUrl)
-                .header("Authorization", "token $UPDATER_TOKEN")
+                .header("User-Agent", "PukiMusic-App")
                 .build()
 
             val res = httpClient.newCall(req).execute()
