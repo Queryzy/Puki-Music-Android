@@ -13,3 +13,4 @@ __pycache__/
 preview_*.png
 test_*.png
 var*.png
+PRD*.md
