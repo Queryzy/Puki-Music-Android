@@ -5,7 +5,8 @@ app/build/
 *.iml
 .idea/
 local.properties
-keystore/keystore.properties
+keystore/
+*.jks
 .DS_Store
 *.pyc
 __pycache__/
