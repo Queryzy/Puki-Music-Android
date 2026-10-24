@@ -2377,7 +2377,7 @@ fun SettingsTab(
     offlineTracks: List<Track>,
     favoriteTrackIds: Set<String> = emptySet(),
     offlineTrackIds: Set<String> = emptySet(),
-    currentVersionName: String = "1.0.62",
+    currentVersionName: String = "1.0.63",
     isCheckingUpdate: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
@@ -2800,7 +2800,11 @@ fun SettingsTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             TextButton(
-                                onClick = { syncManager.triggerSyncNow() }
+                                onClick = {
+                                    syncManager.seedLocalDataToOutbox(force = true)
+                                    syncManager.triggerSyncNow()
+                                    Toast.makeText(context, "Menyinkronkan telemetri...", Toast.LENGTH_SHORT).show()
+                                }
                             ) {
                                 Text("🔄 Sinkronkan Sekarang", color = palette.primary, fontSize = 10.sp)
                             }
@@ -3549,7 +3553,10 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.62: Fix E2EE Sync Authentication & Auto-Heal:\n" +
+                        text = "• v1.0.63: Fix Full Initial Sync & Outbox Flush:\n" +
+                                "  - Seeding Otomatis Seluruh Database Lokal: Lagu favorit lama, semua riwayat pencarian, dan playlist otomatis di-seed ke relay saat pairing atau klik Sinkronkan Sekarang (1:1 Set Union).\n" +
+                                "  - Multi-Batch Outbox Flush: Pengiriman outbox kini memproses antrean tuntas hingga kosong tanpa tertunda.\n\n" +
+                                "• v1.0.62: Fix E2EE Sync Authentication & Auto-Heal:\n" +
                                 "  - Perbaikan Otentikasi HMAC: Penyelarasan key K_auth dengan server relay Cloudflare D1 agar bebas dari error 401.\n" +
                                 "  - Detail Diagnostik Error: Pesan error koneksi relay ditampilkan langsung di antarmuka sinkronisasi.\n\n" +
                                 "• v1.0.61: Cross-Device E2EE Telemetry Sync (Cloud Relay & Zero-Knowledge):\n" +

@@ -50,6 +50,7 @@ class SyncManager private constructor(private val context: Context) {
         private const val KEY_OUTBOX = "sync_outbox"
         private const val KEY_DEVICE_ID = "sync_device_id"
         private const val KEY_SYNC_ENABLED = "sync_is_enabled"
+        private const val KEY_INITIAL_SEED_DONE = "sync_initial_seed_done"
 
         const val DEFAULT_RELAY_URL = ""
 
@@ -151,8 +152,75 @@ class SyncManager private constructor(private val context: Context) {
             .apply()
 
         updateStatus()
+        seedLocalDataToOutbox(force = true)
         startPolling()
         triggerSyncNow()
+    }
+
+    fun seedLocalDataToOutbox(force: Boolean = false) {
+        if (!isSyncEnabled()) return
+        val vaultId = getVaultId() ?: return
+        val seededKey = "${KEY_INITIAL_SEED_DONE}_$vaultId"
+        if (prefs.getBoolean(seededKey, false) && !force) return
+
+        try {
+            val store = LocalMusicStore(context)
+
+            // 1. Seed All Favorites
+            val favs = store.getFavorites()
+            for (track in favs) {
+                queueEvent("TOGGLE_FAVORITE", JSONObject().apply {
+                    put("isLiked", true)
+                    put("track", JSONObject().apply {
+                        put("id", track.id)
+                        put("title", track.title)
+                        put("artist", track.artist)
+                        put("duration", track.durationSeconds)
+                        put("thumbnailUrl", track.thumbnailUrl)
+                        put("viewCount", track.viewCount)
+                        put("likeCount", track.likeCount)
+                    })
+                })
+            }
+
+            // 2. Seed All Recent Searches
+            val searches = store.getRecentSearches()
+            for (query in searches) {
+                queueEvent("ADD_SEARCH", JSONObject().apply {
+                    put("query", query)
+                })
+            }
+
+            // 3. Seed Playlists
+            val playlists = store.getPlaylists()
+            for (pl in playlists) {
+                queueEvent("UPDATE_PLAYLIST", JSONObject().apply {
+                    put("playlistId", pl.id)
+                    put("name", pl.name)
+                    put("operation", "CREATE")
+                })
+                val tracks = store.getPlaylistTracks(pl.id)
+                for (t in tracks) {
+                    queueEvent("UPDATE_PLAYLIST", JSONObject().apply {
+                        put("playlistId", pl.id)
+                        put("operation", "ADD_TRACK")
+                        put("track", JSONObject().apply {
+                            put("id", t.id)
+                            put("title", t.title)
+                            put("artist", t.artist)
+                            put("duration", t.durationSeconds)
+                            put("thumbnailUrl", t.thumbnailUrl)
+                            put("viewCount", t.viewCount)
+                            put("likeCount", t.likeCount)
+                        })
+                    })
+                }
+            }
+
+            prefs.edit().putBoolean(seededKey, true).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal seeding data lokal ke outbox", e)
+        }
     }
 
     fun disableSync() {
@@ -294,9 +362,13 @@ class SyncManager private constructor(private val context: Context) {
             // 1. Ensure vault registered on relay
             ensureVaultRegistered(relayUrl, vaultId, authVerifier)
 
-            // 2. Push Outbox
-            val pending = getOutboxEvents()
-            if (pending.isNotEmpty()) {
+            // 2. Push Outbox (Flush in batches of 50)
+            var pushLoops = 0
+            while (pushLoops < 5) {
+                pushLoops++
+                val pending = getOutboxEvents()
+                if (pending.isEmpty()) break
+
                 val batch = pending.take(50)
                 val eventsPayload = JSONArray()
                 val sentIds = mutableSetOf<String>()
@@ -328,13 +400,16 @@ class SyncManager private constructor(private val context: Context) {
                     .header("X-Signature", signature)
                     .build()
 
-                httpClient.newCall(request).execute().use { resp ->
+                val success = httpClient.newCall(request).execute().use { resp ->
                     if (resp.isSuccessful) {
                         removeSentEvents(sentIds)
+                        true
                     } else {
                         Log.w(TAG, "Sync push gagal: HTTP ${resp.code}")
+                        false
                     }
                 }
+                if (!success) break
             }
 
             // 3. Pull Delta
@@ -344,7 +419,7 @@ class SyncManager private constructor(private val context: Context) {
             val pullSig = SyncCrypto.computeHmacHex(kAuth, pullMsg)
 
             val pullRequest = Request.Builder()
-                .url("$relayUrl/api/v1/sync/pull?since_seq=$lastSeq")
+                .url("$relayUrl/api/v1/sync/pull?since_seq=$lastSeq&limit=200")
                 .get()
                 .header("X-Vault-ID", vaultId)
                 .header("X-Timestamp", pullTimestamp.toString())
