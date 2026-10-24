@@ -1,7 +1,11 @@
 package com.puki.music.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -12,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +90,13 @@ class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController by mutableStateOf<MediaController?>(null)
     private lateinit var store: LocalMusicStore
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            com.puki.music.sync.SyncManager.getInstance(this).onAppForegrounded()
+        } catch (_: Exception) {}
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -2363,7 +2377,7 @@ fun SettingsTab(
     offlineTracks: List<Track>,
     favoriteTrackIds: Set<String> = emptySet(),
     offlineTrackIds: Set<String> = emptySet(),
-    currentVersionName: String = "1.0.16",
+    currentVersionName: String = "1.0.61",
     isCheckingUpdate: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
@@ -2379,6 +2393,11 @@ fun SettingsTab(
     var importInputText by remember { mutableStateOf("") }
     var isAutoDlLiked by remember { mutableStateOf(store.isAutoDownloadLikedEnabled()) }
     var networkPref by remember { mutableStateOf(store.getAutoDownloadNetworkPreference()) }
+
+    val syncManager = remember { com.puki.music.sync.SyncManager.getInstance(context) }
+    val syncStatus by syncManager.statusFlow.collectAsState()
+    var showQrDialog by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var currentPairingUri by remember { mutableStateOf("") }
 
     var offlineUsageText by remember { mutableStateOf("Memuat...") }
     var availableStorageText by remember { mutableStateOf("Memuat...") }
@@ -2612,6 +2631,155 @@ fun SettingsTab(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+        }
+
+        // ── Cross-Device Telemetry Sync (E2EE Relay) ──
+        item {
+            Text(
+                text = "SINKRONISASI TELEMETRI ANTAR-PERANGKAT",
+                color = palette.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceVariant),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Cloud Relay (Zero-Knowledge E2EE)",
+                            color = palette.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val statusText = when (syncStatus.state) {
+                            com.puki.music.sync.SyncConnectionState.SYNCED -> "● TERHUBUNG"
+                            com.puki.music.sync.SyncConnectionState.CONNECTING -> "○ MENYAMBUNG..."
+                            com.puki.music.sync.SyncConnectionState.ERROR -> "⚠ ERROR"
+                            com.puki.music.sync.SyncConnectionState.DISCONNECTED -> "○ NONAKTIF"
+                        }
+                        val statusColor = when (syncStatus.state) {
+                            com.puki.music.sync.SyncConnectionState.SYNCED -> palette.success
+                            com.puki.music.sync.SyncConnectionState.CONNECTING -> palette.tertiary
+                            com.puki.music.sync.SyncConnectionState.ERROR -> palette.error
+                            com.puki.music.sync.SyncConnectionState.DISCONNECTED -> palette.textSecondary
+                        }
+                        Text(
+                            text = statusText,
+                            color = statusColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Sinkronisasi otomatis riwayat putar, pencarian, lagu favorit, dan playlist ke iOS/Desktop tanpa login akun.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Relay: ${syncManager.getRelayUrl()}",
+                        color = palette.textSecondary.copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val uri = if (syncManager.isSyncEnabled()) {
+                                        syncManager.getPairingUri()
+                                    } else {
+                                        syncManager.initializeNewVault()
+                                    }
+                                    currentPairingUri = uri
+                                    showQrDialog = com.puki.music.sync.QrHelper.generateQrBitmap(
+                                        content = uri,
+                                        size = 512,
+                                        foregroundColor = android.graphics.Color.WHITE,
+                                        backgroundColor = android.graphics.Color.BLACK
+                                    )
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal membuat QR: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("🔗 TAMPILKAN QR", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val act = context as? Activity
+                                if (act != null) {
+                                    com.puki.music.sync.QrHelper.startQrScanner(
+                                        activity = act,
+                                        onSuccess = { scannedUri ->
+                                            val ok = syncManager.parseAndApplyPairingUri(scannedUri)
+                                            if (ok) {
+                                                Toast.makeText(context, "Perangkat berhasil terhubung!", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "Format QR tidak valid", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onCanceled = {},
+                                        onFailure = { err ->
+                                            Toast.makeText(context, "Scan gagal: ${err.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            border = BorderStroke(1.dp, palette.primary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("📷 SCAN QR LAIN", color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (syncStatus.isEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = { syncManager.triggerSyncNow() }
+                            ) {
+                                Text("🔄 Sinkronkan Sekarang", color = palette.primary, fontSize = 10.sp)
+                            }
+                            TextButton(
+                                onClick = {
+                                    syncManager.disableSync()
+                                    Toast.makeText(context, "Sinkronisasi dinonaktifkan", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text("Putuskan Hubungan", color = palette.error, fontSize = 10.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3347,7 +3515,13 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.60: YouTube Music Style Splash Loading Seek Bar:\n" +
+                        text = "• v1.0.61: Cross-Device E2EE Telemetry Sync (Cloud Relay & Zero-Knowledge):\n" +
+                                "  - Sinkronisasi Otomatis Multi-Device: Riwayat pencarian, lagu yang diputar, daftar favorit, dan custom playlist kini otomatis sinkron antar-HP (Android & iOS) dan desktop.\n" +
+                                "  - Zero-Knowledge Client-Side AES-256-GCM: Seluruh metadata terenkripsi di perangkat; server relay tidak bisa melihat isi data maupun riwayat pengguna.\n" +
+                                "  - One-Tap QR Pairing: Sambungkan perangkat baru cukup dengan scan kode QR atau salin tautan pairing puki://sync.\n" +
+                                "  - Non-Destructive Set Union & Delta Sync: Data dari beberapa perangkat otomatis digabung secara cerdas tanpa risiko saling menimpa.\n" +
+                                "  - Background Outbox & Auto-Heal: Event disimpan lokal saat offline dan otomatis dikirim saat koneksi internet kembali aktif.\n\n" +
+                                "• v1.0.60: YouTube Music Style Splash Loading Seek Bar:\n" +
                                 "  - Animasi progress bar horizontal ramping khas YouTube Music menggantikan spinner bulat di splash screen awal.\n" +
                                 "  - Dilengkapi garis penunjuk waktu dan titik playhead yang berjalan mulus saat sinkronisasi katalog.\n\n" +
                                 "• v1.0.59: YouTube Music Search UX & Search State Hoisting:\n" +
@@ -3417,6 +3591,60 @@ fun SettingsTab(
                     colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
                 ) {
                     Text("TUTUP", color = palette.background, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = palette.surfaceVariant
+        )
+    }
+
+    if (showQrDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showQrDialog = null },
+            title = {
+                Text(
+                    text = "QR Sinkronisasi Antar-Perangkat",
+                    color = palette.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Scan kode QR ini menggunakan kamera Puki Music di iPhone/iPad/PC untuk menghubungkan sinkronisasi.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Image(
+                        bitmap = showQrDialog!!.asImageBitmap(),
+                        contentDescription = "Pairing QR Code",
+                        modifier = Modifier
+                            .size(220.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Puki Sync URI", currentPairingUri)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Link pairing disalin ke Clipboard!", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, palette.primary)
+                    ) {
+                        Text("SALIN LINK PAIRING", color = palette.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQrDialog = null }) {
+                    Text("TUTUP", color = palette.primary, fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = palette.surfaceVariant

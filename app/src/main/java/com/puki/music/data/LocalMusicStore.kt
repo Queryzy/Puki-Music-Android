@@ -38,7 +38,7 @@ class LocalMusicStore(private val context: Context) {
 
     // ── Play History & Personal Mix ────────────────────────────────────────
 
-    fun recordPlay(track: Track) {
+    fun recordPlay(track: Track, fromSync: Boolean = false) {
         val norm = normalizeId(track.id)
         val jsonStr = prefs.getString(KEY_PLAY_HISTORY, "[]") ?: "[]"
         val array = JSONArray(jsonStr)
@@ -84,6 +84,19 @@ class LocalMusicStore(private val context: Context) {
             outArray.put(item)
         }
         prefs.edit().putString(KEY_PLAY_HISTORY, outArray.toString()).apply()
+
+        if (!fromSync) {
+            try {
+                com.puki.music.sync.SyncManager.getInstance(context).queueEvent("RECORD_PLAY", JSONObject().apply {
+                    put("id", track.id)
+                    put("title", track.title)
+                    put("artist", track.artist)
+                    put("duration", track.durationSeconds)
+                    put("thumbnailUrl", track.thumbnailUrl)
+                    put("playedAt", System.currentTimeMillis())
+                })
+            } catch (_: Exception) {}
+        }
     }
 
     fun getFrequentlyPlayed(limit: Int = 30): List<Track> {
@@ -125,7 +138,7 @@ class LocalMusicStore(private val context: Context) {
 
     // ── Search History & Recommendations ───────────────────────────────────
 
-    fun recordSearch(query: String) {
+    fun recordSearch(query: String, fromSync: Boolean = false) {
         val trimmed = query.trim()
         if (trimmed.length < 2) return
 
@@ -139,6 +152,14 @@ class LocalMusicStore(private val context: Context) {
             array.put(item)
         }
         prefs.edit().putString(KEY_SEARCHES, array.toString()).apply()
+
+        if (!fromSync) {
+            try {
+                com.puki.music.sync.SyncManager.getInstance(context).queueEvent("ADD_SEARCH", JSONObject().apply {
+                    put("query", trimmed)
+                })
+            } catch (_: Exception) {}
+        }
     }
 
     fun removeRecentSearch(query: String) {
@@ -590,7 +611,40 @@ class LocalMusicStore(private val context: Context) {
             true
         }
         saveFavoritesList(list)
+
+        try {
+            com.puki.music.sync.SyncManager.getInstance(context).queueEvent("TOGGLE_FAVORITE", JSONObject().apply {
+                put("isLiked", isNowFav)
+                put("track", JSONObject().apply {
+                    put("id", track.id)
+                    put("title", track.title)
+                    put("artist", track.artist)
+                    put("duration", track.durationSeconds)
+                    put("thumbnailUrl", track.thumbnailUrl)
+                    put("viewCount", track.viewCount)
+                    put("likeCount", track.likeCount)
+                })
+            })
+        } catch (_: Exception) {}
+
         return isNowFav
+    }
+
+    fun setFavoriteState(track: Track, isLiked: Boolean) {
+        val norm = normalizeId(track.id)
+        val list = getFavorites().toMutableList()
+        val existingIndex = list.indexOfFirst { normalizeId(it.id) == norm }
+        if (isLiked) {
+            if (existingIndex < 0) {
+                list.add(0, track)
+                saveFavoritesList(list)
+            }
+        } else {
+            if (existingIndex >= 0) {
+                list.removeAt(existingIndex)
+                saveFavoritesList(list)
+            }
+        }
     }
 
     private fun saveFavoritesList(list: List<Track>) {
@@ -633,9 +687,17 @@ class LocalMusicStore(private val context: Context) {
     }
 
     fun createPlaylist(name: String, autoDownload: Boolean = false): Playlist {
-        val playlists = getPlaylists().toMutableList()
         val newId = "pl_${System.currentTimeMillis()}"
-        val newPl = Playlist(id = newId, name = name, trackCount = 0, autoDownload = autoDownload)
+        return createPlaylistWithId(newId, name, autoDownload, fromSync = false)
+    }
+
+    fun createPlaylistWithId(playlistId: String, name: String, autoDownload: Boolean = false, fromSync: Boolean = false): Playlist {
+        val playlists = getPlaylists().toMutableList()
+        val existing = playlists.find { it.id == playlistId || it.name.equals(name, ignoreCase = true) }
+        if (existing != null) {
+            return existing
+        }
+        val newPl = Playlist(id = playlistId, name = name, trackCount = 0, autoDownload = autoDownload)
         playlists.add(newPl)
 
         val array = JSONArray()
@@ -647,6 +709,17 @@ class LocalMusicStore(private val context: Context) {
             array.put(obj)
         }
         prefs.edit().putString(KEY_PLAYLISTS, array.toString()).apply()
+
+        if (!fromSync) {
+            try {
+                com.puki.music.sync.SyncManager.getInstance(context).queueEvent("UPDATE_PLAYLIST", JSONObject().apply {
+                    put("playlistId", playlistId)
+                    put("name", name)
+                    put("operation", "CREATE")
+                })
+            } catch (_: Exception) {}
+        }
+
         return newPl
     }
 
@@ -704,7 +777,7 @@ class LocalMusicStore(private val context: Context) {
         return list
     }
 
-    fun addTrackToPlaylist(playlistId: String, track: Track): Boolean {
+    fun addTrackToPlaylist(playlistId: String, track: Track, fromSync: Boolean = false): Boolean {
         val norm = normalizeId(track.id)
         val tracks = getPlaylistTracks(playlistId).toMutableList()
         if (tracks.none { normalizeId(it.id) == norm }) {
@@ -722,6 +795,25 @@ class LocalMusicStore(private val context: Context) {
                 array.put(obj)
             }
             prefs.edit().putString("${KEY_PL_TRACKS}_$playlistId", array.toString()).apply()
+
+            if (!fromSync) {
+                try {
+                    com.puki.music.sync.SyncManager.getInstance(context).queueEvent("UPDATE_PLAYLIST", JSONObject().apply {
+                        put("playlistId", playlistId)
+                        put("operation", "ADD_TRACK")
+                        put("track", JSONObject().apply {
+                            put("id", track.id)
+                            put("title", track.title)
+                            put("artist", track.artist)
+                            put("duration", track.durationSeconds)
+                            put("thumbnailUrl", track.thumbnailUrl)
+                            put("viewCount", track.viewCount)
+                            put("likeCount", track.likeCount)
+                        })
+                    })
+                } catch (_: Exception) {}
+            }
+
             return true
         }
         return false
@@ -989,6 +1081,80 @@ class LocalMusicStore(private val context: Context) {
             }
 
             mergedFavsCount
+        }
+    }
+
+    // ── Remote Delta Synchronization Hook ──────────────────────────────────
+
+    fun applyRemoteSyncEvent(event: JSONObject) {
+        try {
+            val action = event.optString("action")
+            val data = event.optJSONObject("data") ?: return
+            when (action) {
+                "RECORD_PLAY" -> {
+                    val id = data.optString("id")
+                    val title = data.optString("title")
+                    val artist = data.optString("artist")
+                    val duration = data.optLong("duration", 0L)
+                    val thumbnailUrl = data.optString("thumbnailUrl")
+                    if (id.isNotBlank()) {
+                        recordPlay(Track(id, title, artist, duration, thumbnailUrl), fromSync = true)
+                    }
+                }
+                "TOGGLE_FAVORITE" -> {
+                    val isLiked = data.optBoolean("isLiked", true)
+                    val trackObj = data.optJSONObject("track") ?: return
+                    val id = trackObj.optString("id")
+                    val title = trackObj.optString("title")
+                    val artist = trackObj.optString("artist")
+                    val duration = trackObj.optLong("duration", 0L)
+                    val thumbnailUrl = trackObj.optString("thumbnailUrl")
+                    val vCount = trackObj.optLong("viewCount", 0L)
+                    val lCount = trackObj.optLong("likeCount", 0L)
+                    val track = Track(
+                        id = id,
+                        title = title,
+                        artist = artist,
+                        durationSeconds = duration,
+                        thumbnailUrl = thumbnailUrl,
+                        viewCount = vCount,
+                        likeCount = lCount
+                    )
+                    setFavoriteState(track, isLiked)
+                }
+                "ADD_SEARCH" -> {
+                    val query = data.optString("query")
+                    if (query.isNotBlank()) {
+                        recordSearch(query, fromSync = true)
+                    }
+                }
+                "UPDATE_PLAYLIST" -> {
+                    val playlistId = data.optString("playlistId")
+                    val playlistName = data.optString("name")
+                    val op = data.optString("operation")
+                    if (playlistId.isNotBlank()) {
+                        if (op == "CREATE" && playlistName.isNotBlank()) {
+                            createPlaylistWithId(playlistId, playlistName, fromSync = true)
+                        } else if (op == "ADD_TRACK") {
+                            val trackObj = data.optJSONObject("track")
+                            if (trackObj != null) {
+                                val track = Track(
+                                    id = trackObj.optString("id"),
+                                    title = trackObj.optString("title"),
+                                    artist = trackObj.optString("artist"),
+                                    durationSeconds = trackObj.optLong("duration", 0L),
+                                    thumbnailUrl = trackObj.optString("thumbnailUrl"),
+                                    viewCount = trackObj.optLong("viewCount", 0L),
+                                    likeCount = trackObj.optLong("likeCount", 0L)
+                                )
+                                addTrackToPlaylist(playlistId, track, fromSync = true)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("LocalMusicStore", "Error applying remote sync event", e)
         }
     }
 
