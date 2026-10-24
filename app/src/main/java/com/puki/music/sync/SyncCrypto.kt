@@ -24,7 +24,7 @@ object SyncCrypto {
         val secretBytes = hexToBytes(syncSecret.trim())
         val kEnc = computeHmacBytes(secretBytes, "puki_encryption_v1")
         val kAuth = computeHmacBytes(secretBytes, "puki_auth_v1")
-        val authVerifier = sha256Hex(kAuth)
+        val authVerifier = kAuth.joinToString("") { "%02x".format(it) }
         return Triple(kEnc, kAuth, authVerifier)
     }
 

@@ -2692,6 +2692,15 @@ fun SettingsTab(
                         fontSize = 11.sp,
                         lineHeight = 16.sp
                     )
+                    if (syncStatus.state == com.puki.music.sync.SyncConnectionState.ERROR && !syncStatus.errorMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Error: ${syncStatus.errorMessage}",
+                            color = palette.error,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "URL RELAY SERVER",
