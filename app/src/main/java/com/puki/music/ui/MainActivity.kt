@@ -2377,7 +2377,7 @@ fun SettingsTab(
     offlineTracks: List<Track>,
     favoriteTrackIds: Set<String> = emptySet(),
     offlineTrackIds: Set<String> = emptySet(),
-    currentVersionName: String = "1.0.63",
+    currentVersionName: String = "1.0.64",
     isCheckingUpdate: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onDownloadFavorites: () -> Unit,
@@ -3553,7 +3553,11 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.63: Fix Full Initial Sync & Outbox Flush:\n" +
+                        text = "• v1.0.64: Fix Coroutine Throttling & Mutex Lock:\n" +
+                                "  - Mutex Concurrency Lock: Mencegah eksekusi sync ganda atau status stuck 'Menyambungkan'.\n" +
+                                "  - Atomic Batch Outbox: Seeding database lokal ditulis sekaligus ke memori tanpa spam coroutine.\n" +
+                                "  - Caching Registrasi Vault: Menghilangkan perhitungan ulang PoW pada setiap interval sinkronisasi.\n\n" +
+                                "• v1.0.63: Fix Full Initial Sync & Outbox Flush:\n" +
                                 "  - Seeding Otomatis Seluruh Database Lokal: Lagu favorit lama, semua riwayat pencarian, dan playlist otomatis di-seed ke relay saat pairing atau klik Sinkronkan Sekarang (1:1 Set Union).\n" +
                                 "  - Multi-Batch Outbox Flush: Pengiriman outbox kini memproses antrean tuntas hingga kosong tanpa tertunda.\n\n" +
                                 "• v1.0.62: Fix E2EE Sync Authentication & Auto-Heal:\n" +

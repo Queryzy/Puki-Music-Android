@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -75,6 +76,7 @@ class SyncManager private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var pollingJob: Job? = null
+    private val syncMutex = Mutex()
 
     private val _statusFlow = MutableStateFlow(SyncStatus())
     val statusFlow: StateFlow<SyncStatus> = _statusFlow.asStateFlow()
@@ -165,11 +167,12 @@ class SyncManager private constructor(private val context: Context) {
 
         try {
             val store = LocalMusicStore(context)
+            val newEvents = mutableListOf<JSONObject>()
 
             // 1. Seed All Favorites
             val favs = store.getFavorites()
             for (track in favs) {
-                queueEvent("TOGGLE_FAVORITE", JSONObject().apply {
+                newEvents.add(createEventObject("TOGGLE_FAVORITE", JSONObject().apply {
                     put("isLiked", true)
                     put("track", JSONObject().apply {
                         put("id", track.id)
@@ -180,28 +183,28 @@ class SyncManager private constructor(private val context: Context) {
                         put("viewCount", track.viewCount)
                         put("likeCount", track.likeCount)
                     })
-                })
+                }))
             }
 
             // 2. Seed All Recent Searches
             val searches = store.getRecentSearches()
             for (query in searches) {
-                queueEvent("ADD_SEARCH", JSONObject().apply {
+                newEvents.add(createEventObject("ADD_SEARCH", JSONObject().apply {
                     put("query", query)
-                })
+                }))
             }
 
             // 3. Seed Playlists
             val playlists = store.getPlaylists()
             for (pl in playlists) {
-                queueEvent("UPDATE_PLAYLIST", JSONObject().apply {
+                newEvents.add(createEventObject("UPDATE_PLAYLIST", JSONObject().apply {
                     put("playlistId", pl.id)
                     put("name", pl.name)
                     put("operation", "CREATE")
-                })
+                }))
                 val tracks = store.getPlaylistTracks(pl.id)
                 for (t in tracks) {
-                    queueEvent("UPDATE_PLAYLIST", JSONObject().apply {
+                    newEvents.add(createEventObject("UPDATE_PLAYLIST", JSONObject().apply {
                         put("playlistId", pl.id)
                         put("operation", "ADD_TRACK")
                         put("track", JSONObject().apply {
@@ -213,13 +216,36 @@ class SyncManager private constructor(private val context: Context) {
                             put("viewCount", t.viewCount)
                             put("likeCount", t.likeCount)
                         })
-                    })
+                    }))
                 }
+            }
+
+            if (newEvents.isNotEmpty()) {
+                synchronized(this) {
+                    val outboxStr = prefs.getString(KEY_OUTBOX, "[]") ?: "[]"
+                    val outboxArr = JSONArray(outboxStr)
+                    for (ev in newEvents) {
+                        outboxArr.put(ev)
+                    }
+                    prefs.edit().putString(KEY_OUTBOX, outboxArr.toString()).apply()
+                }
+                updateStatus()
             }
 
             prefs.edit().putBoolean(seededKey, true).apply()
         } catch (e: Exception) {
             Log.e(TAG, "Gagal seeding data lokal ke outbox", e)
+        }
+    }
+
+    private fun createEventObject(action: String, data: JSONObject): JSONObject {
+        return JSONObject().apply {
+            put("id", UUID.randomUUID().toString())
+            put("device_id", getDeviceId())
+            put("device_type", "android")
+            put("timestamp", System.currentTimeMillis())
+            put("action", action)
+            put("data", data)
         }
     }
 
@@ -349,6 +375,7 @@ class SyncManager private constructor(private val context: Context) {
 
     private suspend fun syncCycle() {
         if (!isSyncEnabled()) return
+        if (!syncMutex.tryLock()) return
 
         val vaultId = getVaultId() ?: return
         val secret = getSyncSecret() ?: return
@@ -475,10 +502,15 @@ class SyncManager private constructor(private val context: Context) {
                 state = SyncConnectionState.ERROR,
                 errorMessage = e.message ?: "Koneksi relay gagal"
             )
+        } finally {
+            syncMutex.unlock()
         }
     }
 
     private fun ensureVaultRegistered(relayUrl: String, vaultId: String, authVerifier: String) {
+        val regKey = "sync_registered_$vaultId"
+        if (prefs.getBoolean(regKey, false)) return
+
         // Minta PoW challenge ke server
         val chalReq = Request.Builder()
             .url("$relayUrl/api/v1/vault/challenge")
@@ -511,7 +543,7 @@ class SyncManager private constructor(private val context: Context) {
         httpClient.newCall(initReq).execute().use { resp ->
             // HTTP 201 Created atau HTTP 409 Conflict (sudah terdaftar) keduanya valid
             if (resp.code == 201 || resp.code == 409) {
-                // Siap
+                prefs.edit().putBoolean(regKey, true).apply()
             } else {
                 Log.w(TAG, "Registrasi vault relay status: ${resp.code}")
             }
