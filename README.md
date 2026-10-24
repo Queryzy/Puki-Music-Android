@@ -52,7 +52,7 @@ Puki Music menggunakan arsitektur **Zero-Knowledge Blind Ledger**:
 ## 📲 Cara Install APK
 
 ### Cara 1: Unduh APK Langsung (Release)
-1. Buka halaman **[Releases](https://github.com/Queryzy/Puki-Music-Android/releases)** atau mirror internal [Gitea Releases](https://gitea.tsolusi.com/nanda/puki-music/releases).
+1. Buka halaman **[Releases](https://github.com/Queryzy/Puki-Music-Android/releases)** di GitHub.
 2. Unduh file `Puki-Music.apk` versi terbaru.
 3. Buka file APK di perangkat Android Anda dan izinkan instalasi dari sumber tidak dikenal (*Install Unknown Apps*).
 4. Buka aplikasi dan nikmati musik bebas iklan.
@@ -92,7 +92,7 @@ File APK biner hasil build akan berada di direktori `app/build/outputs/apk/prod/
 
 ## ⚙️ Cara Menghubungkan Sinkronisasi (Pairing)
 1. Buka tab **Pengaturan** di Puki Music Android.
-2. Pada kartu **Sinkronisasi Antar-Perangkat**, masukkan URL Relay (contoh: `https://puki-sync.diylabs.top` atau self-hosted Anda).
+2. Pada kartu **Sinkronisasi Antar-Perangkat**, masukkan URL Relay (contoh: `https://sync.example.com` atau relay Anda).
 3. Jika menghubungkan dari iPhone/perangkat lain:
    * Tekan tombol **Pindai QR**.
    * Arahkan kamera ke QR Code yang ditampilkan di layar iPhone Anda.
