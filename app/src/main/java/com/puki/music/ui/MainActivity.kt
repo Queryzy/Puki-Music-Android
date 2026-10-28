@@ -3553,7 +3553,10 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.66: Dual-Engine Fusion YouTube Music Official & Deezer HD:\n" +
+                        text = "• v1.0.67: Strict Studio Album Filter:\n" +
+                                "  - Eliminasi Rilis Single: Memfilter ketat respon InnerTube sehingga deretan album horizontal murni menampilkan Album Studio & EP (multi-track) tanpa tercampur rilis single 1 lagu.\n" +
+                                "  - Akurasi Diskografi: Memastikan katalog rilis musisi lokal dan internasional hanya berisi album penuh dengan tracklist lengkap.\n\n" +
+                                "• v1.0.66: Dual-Engine Fusion YouTube Music Official & Deezer HD:\n" +
                                 "  - Integrasi Master Index YouTube Music (WEB_REMIX): Katalog album resmi 100% lengkap untuk musisi Indonesia (NOAH, Peterpan, Last Child, Dewa 19, dll) & Internasional.\n" +
                                 "  - Anti-Salah Tangkap Artis: Logika exact matching presisi mencegah pencarian band lokal dibajak musisi luar negeri.\n" +
                                 "  - Tracklist Bawaan Studio: Membuka album langsung memuat tracklist resmi dengan video ID valid untuk pemutaran instan.\n\n" +

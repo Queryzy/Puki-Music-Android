@@ -113,8 +113,12 @@ object YouTubeMusicRepository {
                         ?.optJSONObject("text")
                         ?.optJSONArray("runs")
 
+                    var recordType = ""
                     var artistName = ""
                     if (col1 != null) {
+                        if (col1.length() > 0) {
+                            recordType = col1.optJSONObject(0)?.optString("text")?.lowercase()?.trim() ?: ""
+                        }
                         for (r in 0 until col1.length()) {
                             val run = col1.optJSONObject(r) ?: continue
                             val runNav = run.optJSONObject("navigationEndpoint")?.optJSONObject("browseEndpoint")
@@ -131,6 +135,11 @@ object YouTubeMusicRepository {
                         }
                     }
                     if (artistName.isBlank()) artistName = q
+
+                    // Strict Album Filter: Drop single / buku audio / podcast (only allow Album or EP)
+                    if (recordType.contains("single") || recordType.contains("buku audio") || recordType.contains("audiobook")) {
+                        continue
+                    }
 
                     // Thumbnail
                     val thumbs = flex.optJSONObject("thumbnail")
