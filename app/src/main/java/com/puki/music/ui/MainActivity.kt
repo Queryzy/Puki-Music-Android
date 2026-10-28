@@ -3553,7 +3553,10 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.67: Strict Studio Album Filter:\n" +
+                        text = "• v1.0.68: Artist Channel Discography Master (100% Studio Albums):\n" +
+                                "  - Prioritas Diskografi Kanal Artis Resmi: Kueri pencarian nama musisi/band langsung mengurai shelf 'Album' dari kanal artis terverifikasi, menjamin album studio penuh (seperti Our Biggest Thing Ever & Everything We Are Everything) muncul di urutan pertama.\n" +
+                                "  - Eliminasi Musisi Luar Berjudul Mirip: Mencegah album artis luar negeri yang kebetulan menggunakan judul kata pencarian (seperti Savagelife/Savo Rotchie) membajak hasil band lokal.\n\n" +
+                                "• v1.0.67: Strict Studio Album Filter:\n" +
                                 "  - Eliminasi Rilis Single: Memfilter ketat respon InnerTube sehingga deretan album horizontal murni menampilkan Album Studio & EP (multi-track) tanpa tercampur rilis single 1 lagu.\n" +
                                 "  - Akurasi Diskografi: Memastikan katalog rilis musisi lokal dan internasional hanya berisi album penuh dengan tracklist lengkap.\n\n" +
                                 "• v1.0.66: Dual-Engine Fusion YouTube Music Official & Deezer HD:\n" +

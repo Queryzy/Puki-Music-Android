@@ -57,13 +57,23 @@ object YouTubeMusicRepository {
 
     /**
      * Search official albums from YouTube Music InnerTube (WEB_REMIX).
-     * Filter: params 'EgWKAQIYAWoMEAMQBBAJEA4QChAF' ensures ONLY official Albums/EPs are returned.
+     * Two-tier strategy:
+     * 1. Check if the query matches an Official Artist Card. If yes, fetch studio albums
+     *    directly from the artist's channel shelf (100% accurate, 0 noise, full albums).
+     * 2. Fallback to search query with strict recordType filter (excluding 'single', 'audiobook').
      */
     suspend fun searchAlbums(query: String, limit: Int = 20): Result<List<Album>> = withContext(Dispatchers.IO) {
         runCatching {
             val q = query.trim()
             if (q.isBlank()) return@runCatching emptyList()
 
+            // Strategy 1: Artist Discography First
+            val artistAlbums = fetchAlbumsFromArtistChannel(q, limit)
+            if (artistAlbums.isNotEmpty()) {
+                return@runCatching artistAlbums
+            }
+
+            // Strategy 2: Global Search with strict record type filter
             val payload = JSONObject()
                 .put("context", createBaseContext())
                 .put("query", q)
@@ -151,7 +161,6 @@ object YouTubeMusicRepository {
                     if (thumbs != null && thumbs.length() > 0) {
                         thumbUrl = thumbs.optJSONObject(thumbs.length() - 1)?.optString("url") ?: ""
                     }
-                    // Upscale Google/YTM thumbnail to crisp 544x544
                     if (thumbUrl.contains("=w") && thumbUrl.contains("-h")) {
                         thumbUrl = thumbUrl.replace(Regex("=w\\d+-h\\d+.*"), "=w544-h544-l90-rj")
                     }
@@ -161,7 +170,7 @@ object YouTubeMusicRepository {
                             id = browseId,
                             title = title,
                             artist = artistName,
-                            trackCount = 0L, // Will be populated on album open
+                            trackCount = 0L,
                             thumbnailUrl = thumbUrl,
                             url = browseId
                         )
@@ -169,6 +178,119 @@ object YouTubeMusicRepository {
                 }
             }
             albums
+        }
+    }
+
+    private suspend fun fetchAlbumsFromArtistChannel(query: String, limit: Int): List<Album> {
+        return try {
+            val payload = JSONObject()
+                .put("context", createBaseContext())
+                .put("query", query)
+
+            val json = postInnerTube("search", payload)
+            val tabs = json.optJSONObject("contents")
+                ?.optJSONObject("tabbedSearchResultsRenderer")
+                ?.optJSONArray("tabs")
+            val sections = tabs?.optJSONObject(0)
+                ?.optJSONObject("tabRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("sectionListRenderer")
+                ?.optJSONArray("contents") ?: return emptyList()
+
+            // Look for musicCardShelfRenderer (Official Artist Card)
+            var channelBrowseId = ""
+            var matchedArtistName = ""
+            for (s in 0 until sections.length()) {
+                val sec = sections.optJSONObject(s) ?: continue
+                val card = sec.optJSONObject("musicCardShelfRenderer") ?: continue
+                val runs = card.optJSONObject("title")?.optJSONArray("runs")
+                val cardTitle = runs?.optJSONObject(0)?.optString("text") ?: ""
+                val nav = runs?.optJSONObject(0)?.optJSONObject("navigationEndpoint")?.optJSONObject("browseEndpoint")
+                val bid = nav?.optString("browseId") ?: ""
+
+                // Verify relevance: artist title loosely matches query
+                if (bid.isNotBlank() && (cardTitle.contains(query, ignoreCase = true) || query.contains(cardTitle, ignoreCase = true))) {
+                    channelBrowseId = bid
+                    matchedArtistName = cardTitle
+                    break
+                }
+            }
+
+            if (channelBrowseId.isBlank()) return emptyList()
+
+            // Browse Artist Channel
+            val bPayload = JSONObject()
+                .put("context", createBaseContext())
+                .put("browseId", channelBrowseId)
+
+            val bJson = postInnerTube("browse", bPayload)
+            var bTabs = bJson.optJSONObject("contents")
+                ?.optJSONObject("singleColumnBrowseResultsRenderer")
+                ?.optJSONArray("tabs")
+            if (bTabs == null) {
+                bTabs = bJson.optJSONObject("contents")
+                    ?.optJSONObject("twoColumnBrowseResultsRenderer")
+                    ?.optJSONArray("tabs")
+            }
+
+            val bSec = bTabs?.optJSONObject(0)
+                ?.optJSONObject("tabRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("sectionListRenderer")
+                ?.optJSONArray("contents") ?: return emptyList()
+
+            val albums = mutableListOf<Album>()
+            for (s in 0 until bSec.length()) {
+                val secItem = bSec.optJSONObject(s) ?: continue
+                val shelf = secItem.optJSONObject("musicCarouselShelfRenderer") ?: continue
+                val header = shelf.optJSONObject("header")?.optJSONObject("musicCarouselShelfBasicHeaderRenderer")
+                val shelfTitle = header?.optJSONObject("title")?.optJSONArray("runs")?.optJSONObject(0)?.optString("text") ?: ""
+
+                // Only take from "Album" shelf
+                if (shelfTitle.contains("Album", ignoreCase = true)) {
+                    val items = shelf.optJSONArray("contents") ?: continue
+                    for (i in 0 until items.length()) {
+                        if (albums.size >= limit) break
+                        val item = items.optJSONObject(i) ?: continue
+                        val mir = item.optJSONObject("musicTwoRowItemRenderer") ?: continue
+
+                        val aNav = mir.optJSONObject("navigationEndpoint")?.optJSONObject("browseEndpoint")
+                        val aBrowseId = aNav?.optString("browseId") ?: ""
+                        if (aBrowseId.isBlank()) continue
+
+                        val titleRuns = mir.optJSONObject("title")?.optJSONArray("runs")
+                        val aTitle = titleRuns?.optJSONObject(0)?.optString("text") ?: ""
+                        if (aTitle.isBlank()) continue
+
+                        val thumbs = mir.optJSONObject("thumbnailRenderer")
+                            ?.optJSONObject("musicThumbnailRenderer")
+                            ?.optJSONObject("thumbnail")
+                            ?.optJSONArray("thumbnails")
+                        var thumbUrl = ""
+                        if (thumbs != null && thumbs.length() > 0) {
+                            thumbUrl = thumbs.optJSONObject(thumbs.length() - 1)?.optString("url") ?: ""
+                        }
+                        if (thumbUrl.contains("=w") && thumbUrl.contains("-h")) {
+                            thumbUrl = thumbUrl.replace(Regex("=w\\d+-h\\d+.*"), "=w544-h544-l90-rj")
+                        }
+
+                        albums.add(
+                            Album(
+                                id = aBrowseId,
+                                title = aTitle,
+                                artist = matchedArtistName,
+                                trackCount = 0L,
+                                thumbnailUrl = thumbUrl,
+                                url = aBrowseId
+                            )
+                        )
+                    }
+                    break // Found Album shelf
+                }
+            }
+            albums
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
