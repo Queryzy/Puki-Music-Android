@@ -3553,7 +3553,11 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.65: Migrasi Sumber Pembaruan ke GitHub Releases:\n" +
+                        text = "• v1.0.66: Dual-Engine Fusion YouTube Music Official & Deezer HD:\n" +
+                                "  - Integrasi Master Index YouTube Music (WEB_REMIX): Katalog album resmi 100% lengkap untuk musisi Indonesia (NOAH, Peterpan, Last Child, Dewa 19, dll) & Internasional.\n" +
+                                "  - Anti-Salah Tangkap Artis: Logika exact matching presisi mencegah pencarian band lokal dibajak musisi luar negeri.\n" +
+                                "  - Tracklist Bawaan Studio: Membuka album langsung memuat tracklist resmi dengan video ID valid untuk pemutaran instan.\n\n" +
+                                "• v1.0.65: Migrasi Sumber Pembaruan ke GitHub Releases:\n" +
                                 "  - Auto-Update Mandiri Publik: Pengecekan versi dan unduhan APK berpindah sepenuhnya ke GitHub API resmi (Queryzy/Puki-Music-Android).\n" +
                                 "  - Keamanan Token: Menghilangkan hardcoded token internal Gitea dari source code aplikasi publik.\n\n" +
                                 "• v1.0.64: Fix Coroutine Throttling & Mutex Lock:\n" +

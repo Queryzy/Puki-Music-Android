@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 66
-        versionName = "1.0.65"
+        versionName = "1.0.66"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -70,6 +70,10 @@ android {
         debug {
             applicationIdSuffix = ".debug"
         }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     compileOptions {
@@ -137,5 +141,6 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
+    testImplementation("org.json:json:20231013")
     testImplementation("junit:junit:4.13.2")
 }

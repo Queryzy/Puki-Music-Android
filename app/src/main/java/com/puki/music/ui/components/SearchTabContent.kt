@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.puki.music.core.DeezerRepository
+import com.puki.music.core.YouTubeMusicRepository
 import com.puki.music.core.OfflineManager
 import com.puki.music.core.StreamResolver
 import com.puki.music.data.LocalMusicStore
@@ -83,11 +84,13 @@ fun SearchTab(
         scope.launch {
             val dzTrackJob = async(Dispatchers.IO) { DeezerRepository.searchCleanTracks(context, q, limit = 30) }
             val ytTrackJob = async(Dispatchers.IO) { StreamResolver.searchTracks(q) }
-            val dzAlbumJob = async(Dispatchers.IO) { DeezerRepository.searchCleanAlbums(context, q, limit = 20) }
+            val ytmAlbumJob = async(Dispatchers.IO) { YouTubeMusicRepository.searchAlbums(q, limit = 20) }
+            val dzAlbumJob = async(Dispatchers.IO) { DeezerRepository.searchCleanAlbums(context, q, limit = 15) }
             val dzArtistJob = async(Dispatchers.IO) { DeezerRepository.searchCleanArtists(context, q, limit = 5) }
 
             val dzTrackRes = dzTrackJob.await()
             val ytTrackRes = ytTrackJob.await()
+            val ytmAlbumRes = ytmAlbumJob.await()
             val dzAlbumRes = dzAlbumJob.await()
             val dzArtistRes = dzArtistJob.await()
 
@@ -107,26 +110,54 @@ fun SearchTab(
                 onYoutubeTracksChange(list)
             }
 
-            dzAlbumRes.onSuccess { list ->
-                if (list.isNotEmpty()) {
-                    onAlbumResultsChange(list.map { dz ->
-                        Album(
-                            id = "dz_${dz.id}",
-                            title = dz.title,
-                            artist = dz.artistName,
-                            trackCount = dz.trackCount.toLong(),
-                            thumbnailUrl = dz.coverUrl,
-                            url = "dz_${dz.id}"
-                        )
-                    })
-                } else {
-                    val ytAlbum = StreamResolver.searchAlbums(q)
-                    ytAlbum.onSuccess { onAlbumResultsChange(it) }
+            // Dual-Engine Fusion: Prioritize YouTube Music official albums (complete catalog for Indo & Global),
+            // merged and deduplicated with Deezer studio albums
+            val combinedAlbums = mutableListOf<Album>()
+            val seenTitles = mutableSetOf<String>()
+
+            ytmAlbumRes.onSuccess { ytmList ->
+                for (a in ytmList) {
+                    val key = "${a.title.lowercase().trim()}_${a.artist.lowercase().trim()}"
+                    if (seenTitles.add(key)) {
+                        combinedAlbums.add(a)
+                    }
                 }
             }
 
+            dzAlbumRes.onSuccess { dzList ->
+                for (dz in dzList) {
+                    val key = "${dz.title.lowercase().trim()}_${dz.artistName.lowercase().trim()}"
+                    if (seenTitles.add(key)) {
+                        combinedAlbums.add(
+                            Album(
+                                id = "dz_${dz.id}",
+                                title = dz.title,
+                                artist = dz.artistName,
+                                trackCount = dz.trackCount.toLong(),
+                                thumbnailUrl = dz.coverUrl,
+                                url = "dz_${dz.id}"
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (combinedAlbums.isNotEmpty()) {
+                onAlbumResultsChange(combinedAlbums)
+            } else {
+                // Secondary legacy fallback if both YTM & Deezer album queries return empty
+                val ytAlbum = StreamResolver.searchAlbums(q)
+                ytAlbum.onSuccess { onAlbumResultsChange(it) }
+            }
+
             dzArtistRes.onSuccess { list ->
-                onTopArtistResultChange(list.firstOrNull())
+                // Strict artist matching: only select artist if query strongly matches artist name
+                val targetQ = q.lowercase()
+                val matched = list.firstOrNull { 
+                    val artName = it.name.lowercase()
+                    artName == targetQ || artName.startsWith(targetQ)
+                } ?: list.firstOrNull()
+                onTopArtistResultChange(matched)
             }
 
             isSearching = false

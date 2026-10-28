@@ -29,6 +29,7 @@ import coil.compose.AsyncImage
 import com.puki.music.core.DeezerRepository
 import com.puki.music.core.OfflineManager
 import com.puki.music.core.StreamResolver
+import com.puki.music.core.YouTubeMusicRepository
 import com.puki.music.data.LocalMusicStore
 import com.puki.music.model.Album
 import com.puki.music.model.Track
@@ -89,6 +90,14 @@ fun ArtistAlbumModal(
                 }.onFailure {
                     Toast.makeText(context, "Gagal memuat tracklist album", Toast.LENGTH_SHORT).show()
                 }
+            } else if (album.url.startsWith("MPREb_")) {
+                // Official YouTube Music InnerTube Album
+                val ytmRes = YouTubeMusicRepository.getAlbumTracks(album.url)
+                ytmRes.onSuccess { tracks ->
+                    albumTracks = tracks
+                }.onFailure {
+                    Toast.makeText(context, "Gagal memuat tracklist album YTM", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 val res = StreamResolver.getAlbumTracks(album.url)
                 res.onSuccess { tracks ->
@@ -124,36 +133,62 @@ fun ArtistAlbumModal(
         }
     }
 
-    // Load albums on launch (Hybrid Deezer + YouTube Fallback)
+    // Load albums on launch (Dual-Engine Fusion: YTM Official First + Deezer Studio)
     LaunchedEffect(artistName) {
         isLoadingAlbums = true
-        // Try searching Deezer clean discography first
-        val dzSearch = DeezerRepository.searchCleanTracks(context, artistName, limit = 5)
-        var dzFound = false
-        dzSearch.onSuccess { dzTracks ->
-            val firstArtist = dzTracks.firstOrNull { it.artistName.contains(artistName, ignoreCase = true) } ?: dzTracks.firstOrNull()
-            if (firstArtist != null) {
-                val dzAlbumsRes = DeezerRepository.getArtistAlbums(context, firstArtist.artistId)
-                dzAlbumsRes.onSuccess { dzList ->
-                    if (dzList.isNotEmpty()) {
-                        albums = dzList.map { dz ->
-                            Album(
-                                id = "dz_${dz.id}",
-                                title = dz.title,
-                                artist = dz.artistName,
-                                trackCount = dz.trackCount.toLong(),
-                                thumbnailUrl = dz.coverUrl,
-                                url = "dz_${dz.id}"
-                            )
-                        }
-                        dzFound = true
+        val combined = mutableListOf<Album>()
+        val seen = mutableSetOf<String>()
+
+        // 1. YouTube Music Official Albums (100% full discography for Indo & Global)
+        val ytmRes = YouTubeMusicRepository.searchAlbums(artistName, limit = 20)
+        ytmRes.onSuccess { ytmList ->
+            val targetLower = artistName.lowercase().trim()
+            for (a in ytmList) {
+                val aArt = a.artist.lowercase().trim()
+                // Strict check: artist name must match or contain query to prevent hijacking
+                if (aArt == targetLower || aArt.contains(targetLower) || targetLower.contains(aArt)) {
+                    val key = "${a.title.lowercase().trim()}_$aArt"
+                    if (seen.add(key)) {
+                        combined.add(a)
                     }
                 }
             }
         }
 
-        // Fallback to YouTube scraper if Deezer albums empty
-        if (!dzFound) {
+        // 2. Deezer clean albums as studio supplement
+        val dzSearch = DeezerRepository.searchCleanTracks(context, artistName, limit = 5)
+        dzSearch.onSuccess { dzTracks ->
+            val targetLower = artistName.lowercase().trim()
+            val firstArtist = dzTracks.firstOrNull { 
+                val artName = it.artistName.lowercase().trim()
+                artName == targetLower || artName.startsWith(targetLower)
+            }
+            if (firstArtist != null) {
+                val dzAlbumsRes = DeezerRepository.getArtistAlbums(context, firstArtist.artistId)
+                dzAlbumsRes.onSuccess { dzList ->
+                    for (dz in dzList) {
+                        val key = "${dz.title.lowercase().trim()}_${dz.artistName.lowercase().trim()}"
+                        if (seen.add(key)) {
+                            combined.add(
+                                Album(
+                                    id = "dz_${dz.id}",
+                                    title = dz.title,
+                                    artist = dz.artistName,
+                                    trackCount = dz.trackCount.toLong(),
+                                    thumbnailUrl = dz.coverUrl,
+                                    url = "dz_${dz.id}"
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (combined.isNotEmpty()) {
+            albums = combined
+        } else {
+            // Secondary legacy fallback
             val res = StreamResolver.searchAlbums(artistName)
             res.onSuccess {
                 albums = it
