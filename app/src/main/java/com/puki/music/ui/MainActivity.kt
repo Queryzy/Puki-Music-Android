@@ -3553,7 +3553,11 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.68: Artist Channel Discography Master (100% Studio Albums):\n" +
+                        text = "• v1.0.69: Deterministic Liked Ordering & Cross-Platform Parity:\n" +
+                                "  - Standarisasi Waktu Suka (likedAt): Urutan lagu favorit selalu deterministik dari yang paling baru ke yang paling lama (DESC) identik di Android, iOS, dan Windows.\n" +
+                                "  - Timestamp Outbox Sync: Setiap event suka menyertakan epoch timestamp akurat ke server relay.\n" +
+                                "  - Relay Sequence Fallback: Menstempel riwayat lagu lama dengan waktu server relay secara presisi.\n\n" +
+                                "• v1.0.68: Artist Channel Discography Master (100% Studio Albums):\n" +
                                 "  - Prioritas Diskografi Kanal Artis Resmi: Kueri pencarian nama musisi/band langsung mengurai shelf 'Album' dari kanal artis terverifikasi, menjamin album studio penuh (seperti Our Biggest Thing Ever & Everything We Are Everything) muncul di urutan pertama.\n" +
                                 "  - Eliminasi Musisi Luar Berjudul Mirip: Mencegah album artis luar negeri yang kebetulan menggunakan judul kata pencarian (seperti Savagelife/Savo Rotchie) membajak hasil band lokal.\n\n" +
                                 "• v1.0.67: Strict Studio Album Filter:\n" +
