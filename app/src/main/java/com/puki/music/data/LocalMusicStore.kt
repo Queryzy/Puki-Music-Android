@@ -587,11 +587,15 @@ class LocalMusicStore(private val context: Context) {
                     durationSeconds = obj.getLong("duration"),
                     thumbnailUrl = obj.getString("thumbnailUrl"),
                     viewCount = obj.optLong("viewCount", 0L),
-                    likeCount = obj.optLong("likeCount", 0L)
+                    likeCount = obj.optLong("likeCount", 0L),
+                    likedAt = obj.optLong("likedAt", 0L)
                 )
             )
         }
-        return list
+        return list.sortedWith(
+            compareByDescending<Track> { it.likedAt }
+                .thenBy { it.title.lowercase(java.util.Locale.ROOT) }
+        )
     }
 
     fun isFavorite(trackId: String): Boolean {
@@ -603,11 +607,13 @@ class LocalMusicStore(private val context: Context) {
         val norm = normalizeId(track.id)
         val list = getFavorites().toMutableList()
         val existingIndex = list.indexOfFirst { normalizeId(it.id) == norm }
+        val now = System.currentTimeMillis()
         val isNowFav = if (existingIndex >= 0) {
             list.removeAt(existingIndex)
             false
         } else {
-            list.add(0, track)
+            val favTrack = track.copy(likedAt = now)
+            list.add(0, favTrack)
             true
         }
         saveFavoritesList(list)
@@ -615,6 +621,7 @@ class LocalMusicStore(private val context: Context) {
         try {
             com.puki.music.sync.SyncManager.getInstance(context).queueEvent("TOGGLE_FAVORITE", JSONObject().apply {
                 put("isLiked", isNowFav)
+                put("likedAt", now)
                 put("track", JSONObject().apply {
                     put("id", track.id)
                     put("title", track.title)
@@ -623,6 +630,7 @@ class LocalMusicStore(private val context: Context) {
                     put("thumbnailUrl", track.thumbnailUrl)
                     put("viewCount", track.viewCount)
                     put("likeCount", track.likeCount)
+                    put("likedAt", now)
                 })
             })
         } catch (_: Exception) {}
@@ -630,13 +638,18 @@ class LocalMusicStore(private val context: Context) {
         return isNowFav
     }
 
-    fun setFavoriteState(track: Track, isLiked: Boolean) {
+    fun setFavoriteState(track: Track, isLiked: Boolean, timestamp: Long = System.currentTimeMillis()) {
         val norm = normalizeId(track.id)
         val list = getFavorites().toMutableList()
         val existingIndex = list.indexOfFirst { normalizeId(it.id) == norm }
+        val effectiveLikedAt = if (track.likedAt > 0L) track.likedAt else timestamp
         if (isLiked) {
+            val favTrack = track.copy(likedAt = effectiveLikedAt)
             if (existingIndex < 0) {
-                list.add(0, track)
+                list.add(0, favTrack)
+                saveFavoritesList(list)
+            } else {
+                list[existingIndex] = favTrack
                 saveFavoritesList(list)
             }
         } else {
@@ -658,6 +671,7 @@ class LocalMusicStore(private val context: Context) {
             obj.put("thumbnailUrl", track.thumbnailUrl)
             obj.put("viewCount", track.viewCount)
             obj.put("likeCount", track.likeCount)
+            obj.put("likedAt", track.likedAt)
             array.put(obj)
         }
         prefs.edit().putString(KEY_FAVORITES, array.toString()).apply()
@@ -1111,6 +1125,7 @@ class LocalMusicStore(private val context: Context) {
                     val thumbnailUrl = trackObj.optString("thumbnailUrl")
                     val vCount = trackObj.optLong("viewCount", 0L)
                     val lCount = trackObj.optLong("likeCount", 0L)
+                    val likedAt = trackObj.optLong("likedAt", data.optLong("likedAt", 0L))
                     val track = Track(
                         id = id,
                         title = title,
@@ -1118,9 +1133,10 @@ class LocalMusicStore(private val context: Context) {
                         durationSeconds = duration,
                         thumbnailUrl = thumbnailUrl,
                         viewCount = vCount,
-                        likeCount = lCount
+                        likeCount = lCount,
+                        likedAt = likedAt
                     )
-                    setFavoriteState(track, isLiked)
+                    setFavoriteState(track, isLiked, if (likedAt > 0L) likedAt else System.currentTimeMillis())
                 }
                 "ADD_SEARCH" -> {
                     val query = data.optString("query")

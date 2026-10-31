@@ -466,10 +466,26 @@ class SyncManager private constructor(private val context: Context) {
                     for (i in 0 until eventsArr.length()) {
                         val evtObj = eventsArr.getJSONObject(i)
                         val cipher = evtObj.getString("payload_encrypted")
+                        val seq = evtObj.optLong("seq", 0L)
+                        val relayTime = if (evtObj.has("created_at")) {
+                            val ca = evtObj.get("created_at")
+                            if (ca is Number) ca.toLong() else System.currentTimeMillis()
+                        } else {
+                            if (seq > 0L) seq * 1000L else System.currentTimeMillis()
+                        }
+
                         try {
                             val decrypted = SyncCrypto.decryptPayload(cipher, kEnc)
                             val eventData = JSONObject(decrypted)
                             val originDevId = eventData.optString("device_id")
+
+                            if (!eventData.has("likedAt") || eventData.optLong("likedAt", 0L) <= 0L) {
+                                eventData.put("likedAt", relayTime)
+                            }
+                            val trackObj = eventData.optJSONObject("track")
+                            if (trackObj != null && (!trackObj.has("likedAt") || trackObj.optLong("likedAt", 0L) <= 0L)) {
+                                trackObj.put("likedAt", relayTime)
+                            }
 
                             // Jangan proses balik event yang dibuat oleh device ini sendiri
                             if (originDevId != getDeviceId()) {

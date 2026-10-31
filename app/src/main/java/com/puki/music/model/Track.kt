@@ -11,7 +11,8 @@ data class Track(
     val streamUrl: String? = null,
     val localFilePath: String? = null,
     val viewCount: Long = 0L,
-    val likeCount: Long = 0L
+    val likeCount: Long = 0L,
+    val likedAt: Long = 0L
 ) {
     val isOffline: Boolean
         get() = !localFilePath.isNullOrBlank()
