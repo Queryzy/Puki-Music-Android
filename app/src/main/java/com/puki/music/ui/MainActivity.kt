@@ -843,7 +843,19 @@ fun NuclearMainScreen(
                     onFavoritesChanged = { favoritesList = store.getFavorites() },
                     onFavoriteToggle = { handleFavoriteToggle(it) },
                     onArtistClick = { viewingArtist = it },
-                    onAlbumClick = { viewingAlbum = it }
+                    onAlbumClick = { viewingAlbum = it },
+                    onPlayAlbumDirect = { album ->
+                        scope.launch {
+                            val res = StreamResolver.getAlbumTracks(album.url)
+                            res.onSuccess { tracks ->
+                                if (tracks.isNotEmpty()) {
+                                    playTrack(tracks.first(), tracks)
+                                }
+                            }.onFailure {
+                                Toast.makeText(context, "Gagal memuat album", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 )
                 2 -> LibraryTab(
                     favorites = favoritesList,
@@ -1182,11 +1194,11 @@ fun DashboardTab(
                                     .background(palette.success)
                             )
                             Text(
-                                text = if (topArtists.isNotEmpty()) "PROFIL SELERA AKTIF (${topArtists.size} ARTIS)" else "PERSONALIZED FEED",
-                                color = palette.success,
-                                fontSize = 11.sp,
+                                text = "✨ MUSIK PILIHAN UNTUKMU",
+                                color = palette.primary,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
+                                letterSpacing = 0.5.sp
                             )
                         }
 
@@ -2803,7 +2815,7 @@ fun SettingsTab(
                                 onClick = {
                                     syncManager.seedLocalDataToOutbox(force = true)
                                     syncManager.triggerSyncNow()
-                                    Toast.makeText(context, "Menyinkronkan telemetri...", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Menyinkronkan musikmu...", Toast.LENGTH_SHORT).show()
                                 }
                             ) {
                                 Text("🔄 Sinkronkan Sekarang", color = palette.primary, fontSize = 10.sp)
@@ -2847,7 +2859,7 @@ fun SettingsTab(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Ekspor seluruh riwayat putar, daftar playlist, lagu favorit, dan algoritma selera ke file JSON agar tidak perlu mengulang dari nol saat ganti HP.",
+                        text = "Cadangkan daftar lagu favorit dan playlist-mu ke file JSON agar mudah dipindahkan saat ganti HP.",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
@@ -3553,7 +3565,12 @@ fun SettingsTab(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "• v1.0.69: Deterministic Liked Ordering & Cross-Platform Parity:\n" +
+                        text = "• v1.0.70: Lyric Stepper, Quick Play Album, Save as Playlist & Humanized UI:\n" +
+                                "  - Kalibrasi Waktu Lirik ([-0.5s ... +0.5s]): Stepper bar melayang di atas karaoke untuk menyamakan waktu lirik per lagu secara permanen.\n" +
+                                "  - Putar Cepat Album: Tombol Play instan di pojok thumbnail album pencarian untuk langsung mendengarkan album tanpa harus membuka dialog.\n" +
+                                "  - Jadikan Album Sebagai Playlist: Tombol Simpan Playlist di lembar album untuk mengonversi seluruh tracklist menjadi playlist pribadi dengan sinkronisasi E2EE otomatis.\n" +
+                                "  - Pembersihan Bahasa & GUI: Tampilan Beranda yang ramah ('Musik Pilihan Untukmu') dan penghapusan istilah teknis robotik di dialog.\n\n" +
+                                "• v1.0.69: Deterministic Liked Ordering & Cross-Platform Parity:\n" +
                                 "  - Standarisasi Waktu Suka (likedAt): Urutan lagu favorit selalu deterministik dari yang paling baru ke yang paling lama (DESC) identik di Android, iOS, dan Windows.\n" +
                                 "  - Timestamp Outbox Sync: Setiap event suka menyertakan epoch timestamp akurat ke server relay.\n" +
                                 "  - Relay Sequence Fallback: Menstempel riwayat lagu lama dengan waktu server relay secara presisi.\n\n" +

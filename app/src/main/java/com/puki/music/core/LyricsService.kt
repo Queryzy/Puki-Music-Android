@@ -81,10 +81,31 @@ object LyricsService {
         return lines.sortedBy { it.timeMs }
     }
 
-    fun findActiveLyricIndex(lines: List<LyricLine>, currentPositionMs: Long): Int {
+    fun getLyricOffsetMs(context: Context, trackId: String): Long {
+        return try {
+            val prefs = context.getSharedPreferences("puki_lyrics_offset", Context.MODE_PRIVATE)
+            prefs.getLong(trackId, 0L)
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    fun setLyricOffsetMs(context: Context, trackId: String, offsetMs: Long) {
+        try {
+            val prefs = context.getSharedPreferences("puki_lyrics_offset", Context.MODE_PRIVATE)
+            if (offsetMs == 0L) {
+                prefs.edit().remove(trackId).apply()
+            } else {
+                prefs.edit().putLong(trackId, offsetMs).apply()
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun findActiveLyricIndex(lines: List<LyricLine>, currentPositionMs: Long, offsetMs: Long = 0L): Int {
         if (lines.isEmpty()) return -1
+        val adjustedMs = currentPositionMs - offsetMs
         for (i in lines.indices.reversed()) {
-            if (currentPositionMs >= lines[i].timeMs) {
+            if (adjustedMs >= lines[i].timeMs) {
                 return i
             }
         }

@@ -65,7 +65,8 @@ fun SearchTab(
     onFavoritesChanged: () -> Unit,
     onFavoriteToggle: ((Track) -> Unit)? = null,
     onArtistClick: (String) -> Unit,
-    onAlbumClick: (Album) -> Unit = {}
+    onAlbumClick: (Album) -> Unit = {},
+    onPlayAlbumDirect: ((Album) -> Unit)? = null
 ) {
     var isSearching by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(store.getRecentSearches()) }
@@ -542,15 +543,36 @@ fun SearchTab(
                                                 border = BorderStroke(1.dp, palette.border)
                                             ) {
                                                 Column(modifier = Modifier.padding(8.dp)) {
-                                                    AsyncImage(
-                                                        model = album.thumbnailUrl,
-                                                        contentDescription = album.title,
-                                                        modifier = Modifier
-                                                            .size(119.dp)
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(Color.Black),
-                                                        contentScale = ContentScale.Crop
-                                                    )
+                                                    Box(modifier = Modifier.size(119.dp)) {
+                                                        AsyncImage(
+                                                            model = album.thumbnailUrl,
+                                                            contentDescription = album.title,
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(Color.Black),
+                                                            contentScale = ContentScale.Crop
+                                                        )
+                                                        if (onPlayAlbumDirect != null) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .align(Alignment.BottomEnd)
+                                                                    .padding(4.dp)
+                                                                    .size(30.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(palette.primary)
+                                                                    .clickable { onPlayAlbumDirect(album) },
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Icon(
+                                                                    Icons.Default.PlayArrow,
+                                                                    contentDescription = "Putar Album",
+                                                                    tint = palette.background,
+                                                                    modifier = Modifier.size(18.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
                                                     Spacer(modifier = Modifier.height(6.dp))
                                                     Text(
                                                         text = album.title,

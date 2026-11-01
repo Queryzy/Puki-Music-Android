@@ -350,7 +350,7 @@ class LocalMusicStore(private val context: Context) {
                     title = "Eksplorasi Lagu Terkait",
                     subtitle = "Menemukan musik yang sesuai karakter seleramu",
                     query = "$top1 similar artists songs indonesia",
-                    reason = "Rekomendasi algoritma selera musik"
+                    reason = "Lagu yang sering kamu dengar"
                 )
             )
 
@@ -735,6 +735,14 @@ class LocalMusicStore(private val context: Context) {
         }
 
         return newPl
+    }
+
+    fun saveAlbumAsPlaylist(albumTitle: String, tracks: List<Track>): Playlist {
+        val pl = createPlaylist(albumTitle.ifBlank { "Album Playlist" })
+        for (track in tracks) {
+            addTrackToPlaylist(pl.id, track)
+        }
+        return pl
     }
 
     fun setPlaylistAutoDownload(playlistId: String, autoDownload: Boolean) {

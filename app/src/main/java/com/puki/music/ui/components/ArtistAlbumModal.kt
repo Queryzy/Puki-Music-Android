@@ -317,23 +317,41 @@ fun ArtistAlbumModal(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Action buttons for Album
+                            // Action buttons for Album: Putar, Simpan ke Playlist, Unduh
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Button(
                                     onClick = {
                                         if (albumTracks.isNotEmpty()) onMixPlayClick(albumTracks)
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1.1f),
                                     colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
                                     shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
                                 ) {
-                                    Icon(Icons.Default.Shuffle, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("PUTAR ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = palette.background, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("PUTAR", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (albumTracks.isNotEmpty()) {
+                                            store.saveAlbumAsPlaylist(selectedAlbum!!.title, albumTracks)
+                                            android.widget.Toast.makeText(context, "Album disimpan ke Playlist!", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1.3f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = palette.surfaceVariant),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.border),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = palette.primary, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("SIMPAN PLAYLIST", color = palette.textPrimary, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                 }
 
                                 val activeBatch = OfflineManager.activeBatch.value
@@ -348,14 +366,14 @@ fun ArtistAlbumModal(
                                     modifier = Modifier.weight(1f),
                                     colors = ButtonDefaults.buttonColors(containerColor = if (isBatchDownloadingThis) palette.surfaceVariant else palette.secondary),
                                     shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
                                 ) {
                                     if (isBatchDownloadingThis && activeBatch != null) {
-                                        Text("${activeBatch.overallPercent}% UNDUH", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Text("${activeBatch.overallPercent}% UNDUH", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                     } else {
-                                        Icon(Icons.Default.Download, contentDescription = null, tint = palette.background, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("UNDUH 1 ALBUM", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Icon(Icons.Default.Download, contentDescription = null, tint = palette.background, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text("UNDUH", color = palette.background, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                     }
                                 }
                             }

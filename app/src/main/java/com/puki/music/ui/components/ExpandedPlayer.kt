@@ -77,9 +77,15 @@ fun ExpandedPlayerModal(
     var isLoadingLyrics by remember(track.id) { mutableStateOf(false) }
     var useRomajiLyrics by remember { mutableStateOf(false) }
     var lyricsError by remember(track.id) { mutableStateOf<String?>(null) }
+    var lyricOffsetMs by remember(track.id) { mutableLongStateOf(0L) }
+    var showSyncBar by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     var reloadLyricsTrigger by remember(track.id) { mutableIntStateOf(0) }
+
+    LaunchedEffect(track.id) {
+        lyricOffsetMs = LyricsService.getLyricOffsetMs(context, track.id)
+    }
 
     LaunchedEffect(track.id, playerCenterMode, reloadLyricsTrigger) {
         if (playerCenterMode == 1 && (lyricsResult == null || reloadLyricsTrigger > 0) && !isLoadingLyrics) {
@@ -266,52 +272,150 @@ fun ExpandedPlayerModal(
                     }
                 }
 
-                // Sub-Bar Khusus Tab Lirik: Tombol Refresh Lirik (Kiri) & Tombol Toggle Romaji (Kanan)
+                // Sub-Bar Khusus Tab Lirik: Kalibrasi Sync Stepper, Refresh Lirik, & Toggle Romaji
                 if (playerCenterMode == 1) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Tombol Refresh Lirik (di sebelah kiri tombol Romaji)
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(palette.surfaceVariant)
-                                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    LyricsService.clearCache(context, track.id)
-                                    lyricsResult = null
-                                    reloadLyricsTrigger++
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "🔄 REFRESH LIRIK",
-                                color = palette.textSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            // Status Offset Sync
+                            if (lyricsResult != null && lyricsResult!!.isSynced) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (showSyncBar || lyricOffsetMs != 0L) palette.primary.copy(alpha = 0.2f) else palette.surfaceVariant)
+                                        .border(1.dp, if (showSyncBar || lyricOffsetMs != 0L) palette.primary else palette.border, RoundedCornerShape(8.dp))
+                                        .clickable { showSyncBar = !showSyncBar }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (lyricOffsetMs != 0L) "⏱️ SYNC (${if (lyricOffsetMs > 0) "+" else ""}${lyricOffsetMs / 1000.0}s)" else "⏱️ SYNC",
+                                        color = if (showSyncBar || lyricOffsetMs != 0L) palette.primary else palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.width(1.dp))
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Tombol Refresh Lirik
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(palette.surfaceVariant)
+                                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            LyricsService.clearCache(context, track.id)
+                                            lyricsResult = null
+                                            reloadLyricsTrigger++
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = "🔄 REFRESH",
+                                        color = palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Tombol Toggle Romaji ON/OFF
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (useRomajiLyrics) palette.primary else palette.surfaceVariant)
+                                        .border(1.dp, if (useRomajiLyrics) palette.primary else palette.border, RoundedCornerShape(8.dp))
+                                        .clickable { useRomajiLyrics = !useRomajiLyrics }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = if (useRomajiLyrics) "🔤 ROMAJI: ON" else "🔤 ROMAJI",
+                                        color = if (useRomajiLyrics) palette.background else palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        // Stepper Bar Kalibrasi Offset Sync Lirik [-0.5s] [-0.1s] [0.0s] [+0.1s] [+0.5s]
+                        if (lyricsResult != null && lyricsResult!!.isSynced && showSyncBar) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(palette.surfaceVariant)
+                                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Offset:",
+                                    color = palette.textSecondary,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(-500L to "-0.5s", -100L to "-0.1s").forEach { (delta, label) ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(palette.background.copy(alpha = 0.6f))
+                                                .clickable {
+                                                    lyricOffsetMs += delta
+                                                    LyricsService.setLyricOffsetMs(context, track.id, lyricOffsetMs)
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(label, color = palette.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
 
-                        // Tombol Toggle Romaji ON/OFF
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (useRomajiLyrics) palette.primary else palette.surfaceVariant)
-                                .border(1.dp, if (useRomajiLyrics) palette.primary else palette.border, RoundedCornerShape(8.dp))
-                                .clickable { useRomajiLyrics = !useRomajiLyrics }
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = if (useRomajiLyrics) "🔤 ROMAJI: ON" else "🔤 ROMAJI: OFF",
-                                color = if (useRomajiLyrics) palette.background else palette.textSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
+                                    // Reset Button
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (lyricOffsetMs != 0L) palette.primary else palette.background.copy(alpha = 0.6f))
+                                            .clickable {
+                                                lyricOffsetMs = 0L
+                                                LyricsService.setLyricOffsetMs(context, track.id, 0L)
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = if (lyricOffsetMs == 0L) "0.0s" else "${if (lyricOffsetMs > 0) "+" else ""}${lyricOffsetMs / 1000.0}s",
+                                            color = if (lyricOffsetMs != 0L) palette.background else palette.primary,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+
+                                    listOf(100L to "+0.1s", 500L to "+0.5s").forEach { (delta, label) ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(palette.background.copy(alpha = 0.6f))
+                                                .clickable {
+                                                    lyricOffsetMs += delta
+                                                    LyricsService.setLyricOffsetMs(context, track.id, lyricOffsetMs)
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(label, color = palette.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -485,7 +589,7 @@ fun ExpandedPlayerModal(
                             }
                         } else if (lyricsResult != null && lyricsResult!!.isSynced) {
                             val lines = lyricsResult!!.lines
-                            val activeIndex = LyricsService.findActiveLyricIndex(lines, currentPositionMs)
+                            val activeIndex = LyricsService.findActiveLyricIndex(lines, currentPositionMs, lyricOffsetMs)
                             val listState = rememberLazyListState()
 
                             LaunchedEffect(activeIndex) {
